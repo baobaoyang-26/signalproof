@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://signalproof.co"),
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://signalproof.co",
+  ),
   title: {
     default: "SignalProof - Reddit Pain Point Reports for SaaS Founders",
     template: "%s | SignalProof",
