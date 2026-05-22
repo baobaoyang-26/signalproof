@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+function siteUrl() {
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL;
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  return "http://localhost:3000";
+}
+
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL ?? "https://signalproof.co",
-  ),
+  metadataBase: new URL(siteUrl()),
   title: {
     default: "SignalProof - Reddit Pain Point Reports for SaaS Founders",
     template: "%s | SignalProof",
@@ -18,7 +26,7 @@ export const metadata: Metadata = {
     title: "SignalProof - Build from market signal, not founder intuition",
     description:
       "Get a founder-ready opportunity report built from public Reddit pain points, repeated workarounds, and competitor frustration. Delivered in 24 hours.",
-    url: "https://signalproof.co",
+    url: siteUrl(),
     siteName: "SignalProof",
     type: "website",
   },
