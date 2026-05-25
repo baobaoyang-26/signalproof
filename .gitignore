@@ -12,6 +12,12 @@
 .env*.local
 .env
 
+# order submissions (local JSON store)
+/data/orders.json
+/data/reports.json
+/data/company-memory.json
+/data/market-map.json
+
 # logs
 npm-debug.log*
 yarn-debug.log*

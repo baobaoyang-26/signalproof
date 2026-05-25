@@ -3,8 +3,12 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
-  background: #ffffff;
+  color-scheme: dark;
+  --canvas: #09090b;
+  --surface: #111113;
+  --elevated: #18181b;
+  --text: #fafafa;
+  --muted: #a1a1aa;
 }
 
 * {
@@ -17,8 +21,8 @@ html {
 
 body {
   margin: 0;
-  background: #ffffff;
-  color: #0a0a0a;
+  background: var(--canvas);
+  color: var(--text);
   font-family:
     Inter,
     ui-sans-serif,
@@ -27,6 +31,8 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
@@ -35,6 +41,39 @@ a {
 }
 
 ::selection {
-  background: #0a0a0a;
-  color: #ffffff;
+  background: rgba(59, 130, 246, 0.35);
+  color: #fff;
+}
+
+@layer utilities {
+  .bg-grid {
+    background-size: 64px 64px;
+    background-image: linear-gradient(
+        rgba(255, 255, 255, 0.03) 1px,
+        transparent 1px
+      ),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  }
+
+  .text-gradient {
+    background: linear-gradient(180deg, #fff 0%, rgba(255, 255, 255, 0.65) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+    color: #111;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-surface {
+    background: #fff !important;
+    border-color: #e5e5e5 !important;
+    color: #111 !important;
+  }
 }

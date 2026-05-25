@@ -1,40 +1,43 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-function siteUrl() {
-  if (process.env.NEXT_PUBLIC_SITE_URL) {
-    return process.env.NEXT_PUBLIC_SITE_URL;
+function siteUrl(): string {
+  const candidates = [
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+    "http://localhost:3000",
+  ].filter(Boolean) as string[];
+
+  for (const raw of candidates) {
+    try {
+      const normalized = raw.startsWith("http") ? raw : `https://${raw}`;
+      return new URL(normalized).toString().replace(/\/$/, "");
+    } catch {
+      continue;
+    }
   }
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
+
   return "http://localhost:3000";
 }
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
   title: {
-    default: "SignalProof - Reddit Pain Point Reports for SaaS Founders",
+    default: "SignalProof — AI Validation Reports for Founders",
     template: "%s | SignalProof",
   },
   description:
-    "Validate SaaS ideas with human-reviewed Reddit pain point reports built from public user complaints, competitor frustration, and buying-intent signals.",
+    "VC-grade startup validation from real website evidence and market signal. Delivered in 24 hours.",
   icons: {
     icon: "/favicon.svg",
   },
   openGraph: {
-    title: "SignalProof - Build from market signal, not founder intuition",
+    title: "SignalProof — Build from evidence, not intuition",
     description:
-      "Get a founder-ready opportunity report built from public Reddit pain points, repeated workarounds, and competitor frustration. Delivered in 24 hours.",
+      "Partner-level validation memos powered by live website scrape and AI analysis.",
     url: siteUrl(),
     siteName: "SignalProof",
     type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "SignalProof - Reddit Pain Point Reports for SaaS Founders",
-    description:
-      "Validate SaaS ideas with human-reviewed Reddit pain point reports delivered in 24 hours.",
   },
 };
 
@@ -44,8 +47,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="antialiased">{children}</body>
+    <html className="dark" lang="en">
+      <body className="min-h-screen bg-canvas text-white antialiased">{children}</body>
     </html>
   );
 }

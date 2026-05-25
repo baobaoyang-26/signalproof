@@ -25,4 +25,4 @@ npm run build
 
 - `/` - Landing page
 
-The Stripe payment link and form link are intentionally left as placeholders for the next MVP step.
+Checkout uses LemonSqueezy. The order form at `/order` redirects to checkout after submit.
