@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { extractSignals } from "@/lib/extract-signals";
+import { resolveCompanyName } from "@/lib/company-name";
 import type { EvidenceBinding, EvidenceTier, ExtractedSignals } from "@/lib/extract-signals";
 import {
   deriveCompanyId,
@@ -18,9 +18,14 @@ import {
   type MarketNode,
 } from "@/lib/market-map";
 import { generateMockReport } from "@/lib/generate-mock-report";
-import { generateAIReport } from "@/lib/openai";
-import type { CreateOrderInput } from "@/lib/orders";
-import { synthesizeSignals, type SignalSynthesis } from "@/lib/signal-synthesis";
+import {
+  generateAIReport,
+  refineMarketEvolutionWithAI,
+  refineStrategicSimulationWithAI,
+} from "@/lib/openai";
+import { formatSignalsCatalog } from "@/lib/extract-signals";
+import { getOrderByReportId, type CreateOrderInput } from "@/lib/orders";
+import type { SignalSynthesis } from "@/lib/signal-synthesis";
 import {
   runStrategicSimulationForCompany,
   type StrategicSimulationBundle,
@@ -59,6 +64,12 @@ export type ValidationReport = {
   nonObviousInsight?: string;
   strategicParadox?: string;
   hiddenMoatOrWeakness?: string;
+  bullCase?: string;
+  bearCase?: string;
+  moatDurability?: string;
+  replacementRisk?: string;
+  gtmWeakness?: string;
+  whyNow?: string;
   extractedSignals?: ExtractedSignals;
   evidenceBindings?: EvidenceBinding[];
   evidenceTier?: EvidenceTier;
@@ -101,7 +112,14 @@ export async function readReports(): Promise<ValidationReport[]> {
 
 export async function getReportById(id: string): Promise<ValidationReport | null> {
   const reports = await readReports();
-  return reports.find((report) => report.id === id) ?? null;
+  const report = reports.find((r) => r.id === id) ?? null;
+  if (!report) return null;
+
+  const order = await getOrderByReportId(id);
+  if (order?.email?.trim()) {
+    return { ...report, email: order.email.trim() };
+  }
+  return report;
 }
 
 export async function saveReport(report: ValidationReport): Promise<void> {
@@ -116,25 +134,23 @@ export async function createReportForOrder(
   input: CreateOrderInput,
   reportId: string,
 ): Promise<ValidationReport> {
-  const { scrapeProfileUrl } = await import("@/lib/firecrawl");
-  const scrape = await scrapeProfileUrl(input.socialProfileUrl);
-  const extractedSignals = extractSignals(scrape?.markdown, scrape?.url);
-  const signalSynthesis = synthesizeSignals(extractedSignals, extractedSignals.companyName);
-  const reportContext = {
-    rawContent: scrape?.markdown,
-    scrapedUrl: scrape?.url,
-    scrapedTitle: scrape?.title,
-    extractedSignals,
-    signalSynthesis,
-  };
+  const { prepareStartupReportContext } = await import("@/lib/startup-order");
+  const { pipeline, context: reportContext } = await prepareStartupReportContext(input);
+  const resolvedCompanyName =
+    reportContext.extractedSignals?.companyName ??
+    resolveCompanyName(reportContext.scrapedUrl ?? "", {
+      markdown: reportContext.rawContent,
+      pageTitle: reportContext.scrapedTitle,
+      niche: pipeline.industryNiche,
+    });
 
   let report: ValidationReport;
 
   try {
-    report = await generateAIReport(orderId, input, reportId, reportContext);
+    report = await generateAIReport(orderId, pipeline, reportId, reportContext);
   } catch (error) {
     console.error("[SignalProof] OpenAI report failed, using mock fallback:", error);
-    report = generateMockReport(orderId, input, reportId, reportContext);
+    report = generateMockReport(orderId, pipeline, reportId, reportContext);
     report.source = "mock";
   }
 
@@ -153,15 +169,37 @@ export async function createReportForOrder(
       report.marketEdges = marketContext.edges;
       report.attackVector = marketContext.attackVector ?? undefined;
       report.fragileMoats = marketContext.fragileMoats;
-      report.marketEvolution = marketContext.evolution;
+      report.marketEvolution = await refineMarketEvolutionWithAI(marketContext.evolution, {
+        companyName: resolvedCompanyName,
+        industryNiche: pipeline.industryNiche,
+        signalCatalog: formatSignalsCatalog(reportContext.extractedSignals!),
+      });
     }
 
     if (report.memoryCompanyId) {
-      report.strategicSimulation =
+      const simulation =
         (await runStrategicSimulationForCompany(report.memoryCompanyId)) ?? undefined;
+      report.strategicSimulation = simulation
+        ? await refineStrategicSimulationWithAI(simulation, {
+            companyName: resolvedCompanyName,
+            industryNiche: pipeline.industryNiche,
+            bullCase: report.bullCase,
+            bearCase: report.bearCase,
+          })
+        : undefined;
     }
   } catch (error) {
     console.error("[SignalProof] Company memory / market map update failed:", error);
+  }
+
+  report.companyName = resolvedCompanyName;
+  report.email = pipeline.email.trim();
+  report.mainConcern = pipeline.startupIdea;
+  report.additionalNotes = pipeline.additionalContext;
+  report.industryNiche = pipeline.industryNiche;
+  report.socialProfileUrl = reportContext.scrapedUrl ?? pipeline.socialProfileUrl;
+  if (report.extractedSignals) {
+    report.extractedSignals.companyName = resolvedCompanyName;
   }
 
   await saveReport(report);

@@ -1,3 +1,5 @@
+import { resolveCompanyName } from "@/lib/company-name";
+
 /** Structured evidence extracted from website markdown before LLM analysis. */
 
 export type SignalCategory =
@@ -7,6 +9,8 @@ export type SignalCategory =
   | "positioning"
   | "repeatedLanguage"
   | "integrations"
+  | "apiSignals"
+  | "hiringSignals"
   | "socialProof"
   | "aiClaims"
   | "enterpriseSignals"
@@ -34,6 +38,8 @@ export type ExtractedSignals = {
   positioning: ExtractedSignal[];
   repeatedLanguage: ExtractedSignal[];
   integrations: ExtractedSignal[];
+  apiSignals: ExtractedSignal[];
+  hiringSignals: ExtractedSignal[];
   socialProof: ExtractedSignal[];
   aiClaims: ExtractedSignal[];
   enterpriseSignals: ExtractedSignal[];
@@ -60,18 +66,20 @@ const STOP_WORDS = new Set([
 
 const CATEGORY_PRIORITY: Record<SignalCategory, number> = {
   pricingModel: 100,
-  workflow: 90,
-  onboardingCta: 80,
-  docsSignals: 70,
-  communitySignals: 60,
-  positioning: 55,
-  targetUser: 50,
-  integrations: 45,
-  distributionSurface: 40,
-  aiClaims: 35,
-  enterpriseSignals: 30,
-  socialProof: 25,
-  repeatedLanguage: 20,
+  integrations: 95,
+  apiSignals: 92,
+  hiringSignals: 88,
+  workflow: 82,
+  docsSignals: 78,
+  onboardingCta: 72,
+  communitySignals: 58,
+  positioning: 52,
+  targetUser: 48,
+  distributionSurface: 44,
+  aiClaims: 38,
+  enterpriseSignals: 32,
+  socialProof: 26,
+  repeatedLanguage: 18,
 };
 
 const PATTERNS: Record<SignalCategory, RegExp> = {
@@ -85,21 +93,25 @@ const PATTERNS: Record<SignalCategory, RegExp> = {
     /\breplace\b|\balternative\s+to\b|\bvs\.?\s+\w+|\bfastest\b|\bmodern\b|\boperating\s+system\b|\bdefault\b|\bnext[- ]gen\b|\breimagin|\bunlike\b|\bbetter\s+than\b/i,
   repeatedLanguage: /^.+$/,
   integrations:
-    /\bintegrat(?:e|ion|ed)\b|\bapi\b|\bwebhook\b|\bslack\b|\bgithub\b|\bjira\b|\bfigma\b|\bnotion\b|\bzapier\b|\boauth\b|\bplugin\b|\bextension\b/i,
+    /\bintegrat(?:e|ion|ed|ions)\b|\bconnect(?:s|ed)?\s+with\b|\bworks\s+with\b|\bwebhook\b|\bslack\b|\bgithub\b|\bjira\b|\bfigma\b|\bnotion\b|\bzapier\b|\boauth\b|\bplugin\b|\bextension\b|\bpartner(?:s|ship)?\b|\becosystem\b/i,
+  apiSignals:
+    /\brest\s+api\b|\bgraphql\b|\bsdk\b|\bapi\s+key\b|\bapi\s+reference\b|\bdeveloper\s+api\b|\brate\s+limit\b|\bendpoint\b|\bauthentication\b|\bbearer\s+token\b|\bwebhooks?\b|\bopenapi\b|\bswagger\b/i,
+  hiringSignals:
+    /\bwe(?:'re|\s+are)\s+hiring\b|\bopen\s+(?:roles?|positions?)\b|\bjoin\s+our\s+team\b|\bcareers?\b|\bjob\s+openings?\b|\bapply\s+now\b|\bwork\s+with\s+us\b|\bengineering\s+roles?\b|\bopenings?\s+at\b/i,
   socialProof:
     /\btrusted\s+by\b|\bcustomers?\b|\b\d+[kKm+]+\s+(?:users|teams|customers)\b|\breviews?\b|\brated\b|\blogos?\b|\bused\s+by\b|\bjoin\s+\d+/i,
   aiClaims:
-    /\bai[- ]powered\b|\bartificial\s+intelligence\b|\bgpt\b|\bcopilot\b|\bassistant\b|\bgenerative\b|\bmachine\s+learning\b|\bllm\b|\bauto[- ]draft\b/i,
+    /\bai[- ]powered\b|\bartificial\s+intelligence\b|\bgpt\b|\bcopilot\b|\bassistant\b|\bgenerative\b|\bmachine\s+learning\b|\bllm\b|\bauto[- ]draft\b|\bimage\s+and\s+video\b|\bimage\s+generation\b|\bvideo\s+model\b|\bbeautiful\s+ai\b|\bresearch\s+lab\b/i,
   enterpriseSignals:
     /\benterprise\b|\bSOC\s*2\b|\bSSO\b|\bSAML\b|\bcompliance\b|\bsecurity\b|\badmin\b|\baudit\b|\bHIPAA\b|\bGDPR\b|\brole[- ]based\b/i,
   communitySignals:
-    /\bdiscord\b|\bcommunity\b|\bforum\b|\btemplate\s+(?:gallery|marketplace)\b|\bmarketplace\b|\bcreator\s+ecosystem\b|\bshare\s+template\b/i,
+    /\bdiscord\b|\bcommunity\b|\bforum\b|\btemplate\s+(?:gallery|marketplace)\b|\bmarketplace\b|\bcreator\s+ecosystem\b|\bshare\s+template\b|\bresearch\s+lab\b|\bcommunity-funded\b/i,
   onboardingCta:
     /\bget\s+started\b|\bstart\s+free\b|\bsign\s+up\b|\btry\s+(?:for\s+)?free\b|\bbook\s+a\s+demo\b|\brequest\s+demo\b|\bjoin\s+(?:now|waitlist)\b|\bcreate\s+(?:an\s+)?account\b/i,
   distributionSurface:
     /\bdiscord\b|\bapp\s+store\b|\bchrome\s+extension\b|\bmarketplace\b|\bplugin\b|\bslack\s+app\b|\bfigma\s+community\b|\bdownload\b/i,
   docsSignals:
-    /\bdocumentation\b|\bdocs\b|\bdeveloper\s+docs\b|\bapi\s+reference\b|\bhelp\s+center\b|\bknowledge\s+base\b|\bguide\b|\bchangelog\b/i,
+    /\bdocumentation\b|\bdocs\b|\bdeveloper\s+(?:docs|documentation|guide)\b|\bhelp\s+center\b|\bknowledge\s+base\b|\bgetting\s+started\b|\bquick\s*start\b|\bchangelog\b|\brelease\s+notes\b|\broadmap\b/i,
 };
 
 function cleanLine(line: string): string {
@@ -182,34 +194,26 @@ function extractRepeatedLanguage(lines: string[], existing: Set<string>): Extrac
   return out;
 }
 
-function companyNameFromMarkdown(markdown: string, url?: string): string | undefined {
-  const titleLine = markdown.split("\n").find((l) => /^#\s+/.test(l.trim()));
-  if (titleLine) {
-    const name = cleanLine(titleLine).slice(0, 80);
-    if (name.length > 1) return name;
-  }
-  if (url) {
-    try {
-      const host = new URL(url.startsWith("http") ? url : `https://${url}`).hostname;
-      const slug = host.replace(/^www\./, "").split(".")[0];
-      if (slug.length > 2) return slug.charAt(0).toUpperCase() + slug.slice(1);
-    } catch {
-      /* ignore */
-    }
-  }
-  return undefined;
+function resolveSignalsCompanyName(
+  markdown: string | undefined,
+  url?: string,
+): string | undefined {
+  if (!url) return undefined;
+  return resolveCompanyName(url, { markdown: markdown ?? "" });
 }
 
 function computeEvidenceScore(signals: ExtractedSignals): number {
   let score = 0;
-  if (signals.pricingModel.length) score += 25;
-  if (signals.workflow.length) score += 20;
-  if (signals.onboardingCta.length) score += 15;
-  if (signals.docsSignals.length) score += 15;
-  if (signals.communitySignals.length) score += 10;
-  if (signals.positioning.length) score += 5;
-  if (signals.targetUser.length) score += 5;
-  if (signals.integrations.length) score += 5;
+  if (signals.pricingModel.length) score += 28;
+  if (signals.integrations.length) score += 22;
+  if (signals.apiSignals.length) score += 20;
+  if (signals.hiringSignals.length) score += 16;
+  if (signals.workflow.length) score += 14;
+  if (signals.docsSignals.length) score += 12;
+  if (signals.onboardingCta.length) score += 8;
+  if (signals.communitySignals.length) score += 6;
+  if (signals.positioning.length) score += 4;
+  if (signals.targetUser.length) score += 4;
   return Math.min(100, score);
 }
 
@@ -218,18 +222,33 @@ function computeEvidenceTier(
   score: number,
   signals: Pick<
     ExtractedSignals,
-  "pricingModel" | "workflow" | "onboardingCta" | "docsSignals" | "communitySignals"
+    | "pricingModel"
+    | "integrations"
+    | "apiSignals"
+    | "hiringSignals"
+    | "workflow"
+    | "onboardingCta"
+    | "docsSignals"
+    | "communitySignals"
   >,
 ): EvidenceTier {
   if (!hasScrape) return "none";
   const hasPriority =
     signals.pricingModel.length > 0 ||
+    signals.integrations.length > 0 ||
+    signals.apiSignals.length > 0 ||
+    signals.hiringSignals.length > 0 ||
     signals.workflow.length > 0 ||
     signals.onboardingCta.length > 0 ||
     signals.docsSignals.length > 0 ||
     signals.communitySignals.length > 0;
 
-  if (score >= 55 && (signals.pricingModel.length > 0 || signals.workflow.length > 0)) {
+  const hasMonetizationOrPlatform =
+    signals.pricingModel.length > 0 ||
+    signals.integrations.length > 0 ||
+    signals.apiSignals.length > 0;
+
+  if (score >= 55 && hasMonetizationOrPlatform) {
     return "strong";
   }
   if (score >= 30 && hasPriority) return "moderate";
@@ -249,6 +268,8 @@ function computeGaps(signals: ExtractedSignals): string[] {
   if (!signals.docsSignals.length) gaps.push("docsSignals: not found on page");
   if (!signals.communitySignals.length) gaps.push("communitySignals: not found on page");
   if (!signals.integrations.length) gaps.push("integrations: not found — note absence if relevant");
+  if (!signals.apiSignals.length) gaps.push("apiSignals: not found — platform/API motion unclear");
+  if (!signals.hiringSignals.length) gaps.push("hiringSignals: not found — growth/hiring signal absent");
   if (!signals.aiClaims.length) gaps.push("aiClaims: none detected");
   return gaps;
 }
@@ -261,6 +282,8 @@ function countSignals(s: ExtractedSignals): number {
     s.positioning.length +
     s.repeatedLanguage.length +
     s.integrations.length +
+    s.apiSignals.length +
+    s.hiringSignals.length +
     s.socialProof.length +
     s.aiClaims.length +
     s.enterpriseSignals.length +
@@ -284,6 +307,8 @@ export function extractSignals(
     positioning: [],
     repeatedLanguage: [],
     integrations: [],
+    apiSignals: [],
+    hiringSignals: [],
     socialProof: [],
     aiClaims: [],
     enterpriseSignals: [],
@@ -298,7 +323,7 @@ export function extractSignals(
   };
 
   if (!markdown?.trim()) {
-    empty.companyName = companyNameFromMarkdown("", url);
+    empty.companyName = resolveSignalsCompanyName("", url);
     empty.gaps = computeGaps(empty);
     return empty;
   }
@@ -313,7 +338,9 @@ export function extractSignals(
   const communitySignals = takeMatchingLines(lines, PATTERNS.communitySignals, "communitySignals", 4, seen);
   const targetUser = takeMatchingLines(lines, PATTERNS.targetUser, "targetUser", 4, seen);
   const positioning = takeMatchingLines(lines, PATTERNS.positioning, "positioning", 5, seen);
-  const integrations = takeMatchingLines(lines, PATTERNS.integrations, "integrations", 5, seen);
+  const integrations = takeMatchingLines(lines, PATTERNS.integrations, "integrations", 6, seen);
+  const apiSignals = takeMatchingLines(lines, PATTERNS.apiSignals, "apiSignals", 5, seen);
+  const hiringSignals = takeMatchingLines(lines, PATTERNS.hiringSignals, "hiringSignals", 5, seen);
   const socialProof = takeMatchingLines(lines, PATTERNS.socialProof, "socialProof", 4, seen);
   const aiClaims = takeMatchingLines(lines, PATTERNS.aiClaims, "aiClaims", 4, seen);
   const enterpriseSignals = takeMatchingLines(lines, PATTERNS.enterpriseSignals, "enterpriseSignals", 4, seen);
@@ -321,7 +348,7 @@ export function extractSignals(
   const repeatedLanguage = extractRepeatedLanguage(lines, seen);
 
   const signals: ExtractedSignals = {
-    companyName: companyNameFromMarkdown(markdown, url),
+    companyName: resolveSignalsCompanyName(markdown, url),
     scrapedUrl: url,
     hasScrape: true,
     pricingModel,
@@ -330,6 +357,8 @@ export function extractSignals(
     positioning,
     repeatedLanguage,
     integrations,
+    apiSignals,
+    hiringSignals,
     socialProof,
     aiClaims,
     enterpriseSignals,
@@ -354,13 +383,15 @@ export function extractSignals(
 export function allSignals(signals: ExtractedSignals): ExtractedSignal[] {
   return [
     ...signals.pricingModel,
+    ...signals.integrations,
+    ...signals.apiSignals,
+    ...signals.hiringSignals,
     ...signals.workflow,
     ...signals.onboardingCta,
     ...signals.docsSignals,
     ...signals.communitySignals,
     ...signals.positioning,
     ...signals.targetUser,
-    ...signals.integrations,
     ...signals.distributionSurface,
     ...signals.aiClaims,
     ...signals.enterpriseSignals,
@@ -382,7 +413,7 @@ export function formatSignalsCatalog(signals: ExtractedSignals): string {
     `Evidence tier: ${signals.evidenceTier} (score ${signals.evidenceScore}/100, ${signals.signalCount} signals)`,
     `Company: ${signals.companyName ?? "unknown"}`,
     "",
-    "Evidence priority: pricingModel > workflow > onboardingCta > docsSignals > communitySignals",
+    "Evidence priority: pricingModel > integrations > apiSignals > hiringSignals > workflow > docsSignals > onboardingCta",
     "",
     "SIGNAL CATALOG (cite by id in every analytical claim):",
     ...lines,
@@ -405,6 +436,8 @@ export function signalsToWebsiteEvidence(signals: ExtractedSignals): string[] {
     positioning: "positioning",
     targetUser: "product",
     integrations: "workflow",
+    apiSignals: "workflow",
+    hiringSignals: "product",
     distributionSurface: "community",
     aiClaims: "product",
     enterpriseSignals: "product",

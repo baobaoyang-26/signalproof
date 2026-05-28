@@ -88,7 +88,11 @@ function categoryHasText(ctx: SignalContext, categories: SignalCategory[], patte
 }
 
 function lacksApiEmphasis(ctx: SignalContext): boolean {
-  const integrationHits = categoryHasText(ctx, ["integrations", "docsSignals", "workflow"], API_PATTERN);
+  const integrationHits = categoryHasText(
+    ctx,
+    ["integrations", "apiSignals", "docsSignals", "workflow"],
+    API_PATTERN,
+  );
   return integrationHits.length === 0;
 }
 
@@ -296,12 +300,14 @@ function fallbackPairings(ctx: SignalContext): RuleMatch[] {
   const company = ctx.company;
   const priorityCategories: SignalCategory[] = [
     "pricingModel",
+    "integrations",
+    "apiSignals",
+    "hiringSignals",
     "workflow",
-    "onboardingCta",
     "docsSignals",
+    "onboardingCta",
     "communitySignals",
     "positioning",
-    "integrations",
     "targetUser",
   ];
 

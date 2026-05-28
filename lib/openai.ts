@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { isBlockedCompanyName, resolveCompanyName } from "@/lib/company-name";
 import {
   allSignals,
   capConfidenceByEvidence,
@@ -10,8 +11,9 @@ import {
   type ExtractedSignals,
 } from "@/lib/extract-signals";
 import { containsBannedGenericPhrase, isLikelyGenericMemo } from "@/lib/memo-quality";
-import type { CreateOrderInput } from "@/lib/orders";
+import type { PipelineInput } from "@/lib/startup-order";
 import type { ValidationReport } from "@/lib/reports";
+import type { MarketEvolutionInference } from "@/lib/market-map";
 import {
   capConfidenceBySynthesis,
   formatSynthesisForPrompt,
@@ -19,6 +21,13 @@ import {
   synthesizeSignals,
   type SignalSynthesis,
 } from "@/lib/signal-synthesis";
+import { scrubUserFacingText } from "@/lib/report-view";
+import type { StrategicSimulationBundle } from "@/lib/strategic-simulation";
+
+function scrubMemoField(value: unknown, fallback: string): string {
+  const raw = typeof value === "string" && value.trim() ? value.trim() : fallback;
+  return scrubUserFacingText(raw) || fallback;
+}
 
 export type VCMemoJson = {
   score: number;
@@ -32,6 +41,12 @@ export type VCMemoJson = {
   strategicParadox: string;
   hiddenMoatOrWeakness: string;
   investmentVerdict: string;
+  bullCase: string;
+  bearCase: string;
+  moatDurability: string;
+  replacementRisk: string;
+  gtmWeakness: string;
+  whyNow: string;
   whatThisCompanyActuallyIs: string;
   moatAnalysis: string;
   whyThisMightFail: string[];
@@ -49,27 +64,97 @@ export type VCMemoJson = {
   }>;
 };
 
-const SYSTEM_PROMPT = `You are a Sequoia / YC partner writing a confidential investment validation memo about ONE specific company.
+/** Task → model routing. Cheap by default; reasoning tasks use GPT-5 (override via env). */
+export type OpenAITask =
+  | "signal_extraction"
+  | "structured_evidence"
+  | "investment_thesis"
+  | "strategic_simulation"
+  | "market_evolution";
 
-You receive a **signal synthesis catalog** — multi-signal behavioral inferences (company DNA, patterns, tradeoffs) — plus a raw signal catalog for verification only.
+const REASONING_TASKS: ReadonlySet<OpenAITask> = new Set([
+  "investment_thesis",
+  "strategic_simulation",
+  "market_evolution",
+]);
 
-## Primary source (mandatory)
-1. **Reason from SYNTHESIS entries [SYN-*] first** — each bundles ≥2 signals into company behavior understanding.
-2. Every prose field MUST cite synthesis ids, e.g. [SYN-PATTERN-1], [SYN-DNA-1], [SYN-OPT-1]. You may add supporting signal ids in parentheses only when clarifying a fact.
-3. **Do not draw conclusions from a single signal alone** — if no synthesis covers a claim, say evidence is insufficient.
-4. **evidenceBindings**: { field, claim, synthesisIds[] (preferred), signalIds[] (supporting only) }.
-5. If synthesis catalog is empty: confidence "Low"; no behavioral DNA claims.
+const DEFAULT_CHEAP_MODEL = "gpt-4o-mini";
+const DEFAULT_REASONING_MODEL = "gpt-5";
 
-## Secondary source
-Raw signal catalog — use only to verify synthesis or fill websiteEvidence bullets. Do not replace synthesis reasoning with isolated signal listing.
+export function resolveModelForTask(task: OpenAITask): string {
+  if (REASONING_TASKS.has(task)) {
+    return process.env.OPENAI_MODEL_REASONING?.trim() || DEFAULT_REASONING_MODEL;
+  }
+  return process.env.OPENAI_MODEL_CHEAP?.trim() || DEFAULT_CHEAP_MODEL;
+}
 
-## Analysis priority
-coreContradiction, strategicTension, hiddenRisk, whyIncumbentsHaventWon, nonObviousInsight, strategicParadox, hiddenMoatOrWeakness — each must reflect synthesized company behavior, not feature lists.
+function logOpenAIModel(task: OpenAITask, model: string): void {
+  console.info(`[SignalProof] OpenAI task=${task} model=${model}`);
+}
 
-## Banned
-Generic industry language, single-signal conclusions, consultant platitudes.
+const MEMO_STYLE_RULES = `
+## Voice (founder education + U.S. VC partner reasoning)
+- English only. Teach HOW to think—not generic AI summaries.
+- Each string field: **3–5 complete sentences** (never one-line fragments).
+- Every major field must include: (1) WHY this matters for survival/scale, (2) WHY investors weight it in diligence, (3) one COMMON FOUNDER MISTAKE on this dimension, (4) a HISTORICAL PATTERN or named precedent when useful (bundling, workflow collapse, race-to-zero pricing, etc.).
+- Name real substitutes when plausible (OpenAI, Adobe, Figma, Canva, Google, etc.).
+- Explain WHY startups in this shape survive or die—not just what the product does.
 
-Voice: terse partner memo. Output strict JSON only.`;
+## Depth required (explicit reasoning)
+workflow integration risk, replacement risk, OpenAI/incumbent platform threat, distribution moat vs. product moat,
+GTM weakness, market saturation, pricing durability / survivability, founder dependency, switching resistance.
+
+## Never sound like
+ChatGPT summary, AI report generator, startup blog, innovation/disruption buzzwords, or stitched signal dump.
+
+## Banned phrases (never use)
+transformative, cutting-edge, revolutionary, AI-powered, AI-generated report, unlocks value, ecosystem, landscape,
+disruption, innovation at scale, validate with users, strong potential, seamless experience, leveraging AI,
+market is growing, competitive market, creator identity density, community-native distribution, limited API surface, dual GTM.
+
+## Never output in user-visible strings
+SYN-* ids, signal ids, synthesis, unmapped, coverage, fallback memo, internal diagnostic jargon.
+
+Reason from synthesis/signals internally only.`;
+
+const STARTUP_IDEA_RULES = `
+## Explainable Startup Intelligence (founder submission)
+Input may be an idea, market observation, rough notes, or optional reference link—not necessarily a live website.
+Deliver teachable survivability analysis: moat hypothesis, replacement risk, likely competitors, GTM weakness, pricing durability,
+incumbent/OpenAI threat, workflow ownership & integration risk, why now, founder diligence questions (that teach judgment), bull/bear scenarios.
+Use scraped links only as supporting evidence. Do not invent revenue, customers, or traction not implied by the submission.
+founderQuestions must be questions that teach the founder what partners probe—not checkbox diligence.`;
+
+const SYSTEM_STRUCTURED_PROMPT = `You draft the structured section of an explainable startup intelligence memo that teaches founders how investors think.
+${MEMO_STYLE_RULES}
+${STARTUP_IDEA_RULES}
+
+## This pass only
+score, confidence, coreContradiction, strategicTension, hiddenRisk, whyIncumbentsHaventWon, nonObviousInsight,
+strategicParadox, hiddenMoatOrWeakness, demand, competition, opportunities, verdict, whyThisMightFail,
+founderQuestions, websiteEvidence (plain English bullets, no ids).
+
+Do NOT write bullCase, bearCase, moatDurability, replacementRisk, gtmWeakness, whyNow, investmentVerdict — thesis pass handles those.
+
+Output strict JSON only.`;
+
+const SYSTEM_THESIS_PROMPT = `You draft the survivability thesis section of an explainable startup intelligence memo—educational, VC-native, founder-first.
+${MEMO_STYLE_RULES}
+${STARTUP_IDEA_RULES}
+
+## Required fields
+bullCase, bearCase, moatDurability, replacementRisk, gtmWeakness, whyNow (each 2–4 sentences),
+investmentVerdict (specific pass/hold/explore with named risks — e.g. OpenAI or Adobe bundling),
+whatThisCompanyActuallyIs, moatAnalysis.
+
+investmentVerdict example tone:
+"Pass for now. [Company] has X, but public evidence does not prove Y. If [incumbent] embeds [capability] in existing workflows, [company] risks becoming Z."
+
+Output strict JSON only.`;
+
+const SYSTEM_MARKET_EVOLUTION_PROMPT = `You refine market evolution insights for a VC memo. Keep the exact JSON schema. Improve specificity: name layers, companies, and substitution paths. Preserve evidence id fields. No generic AI summary tone. Output strict JSON only.`;
+
+const SYSTEM_STRATEGIC_SIMULATION_PROMPT = `You refine strategic simulation outputs for a VC memo. Keep the exact JSON schema. Improve winner/loser/response prose with named competitors and workflow chains. Preserve ids and numeric fields. Output strict JSON only.`;
 
 type Level = ValidationReport["demandLevel"];
 type Verdict = ValidationReport["verdict"];
@@ -78,10 +163,49 @@ type Confidence = NonNullable<ValidationReport["confidence"]>;
 export type ReportContext = {
   rawContent?: string;
   scrapedUrl?: string;
+  ideaMode?: boolean;
+  founderSubmission?: string;
+  supportingUrls?: string[];
   scrapedTitle?: string;
+  signalCatalog?: string;
   extractedSignals?: ExtractedSignals;
   signalSynthesis?: SignalSynthesis;
 };
+
+export type StructuredMemoJson = Pick<
+  VCMemoJson,
+  | "companyName"
+  | "score"
+  | "confidence"
+  | "coreContradiction"
+  | "strategicTension"
+  | "hiddenRisk"
+  | "whyIncumbentsHaventWon"
+  | "nonObviousInsight"
+  | "strategicParadox"
+  | "hiddenMoatOrWeakness"
+  | "demand"
+  | "competition"
+  | "opportunities"
+  | "verdict"
+  | "whyThisMightFail"
+  | "founderQuestions"
+  | "websiteEvidence"
+  | "evidenceBindings"
+>;
+
+export type InvestmentThesisJson = Pick<
+  VCMemoJson,
+  | "bullCase"
+  | "bearCase"
+  | "moatDurability"
+  | "replacementRisk"
+  | "gtmWeakness"
+  | "whyNow"
+  | "investmentVerdict"
+  | "whatThisCompanyActuallyIs"
+  | "moatAnalysis"
+>;
 
 function getClient() {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -150,9 +274,9 @@ function clampScore(score: unknown): number {
 }
 
 function ensureString(value: unknown, fallback: string): string {
-  const raw = typeof value === "string" && value.trim() ? value.trim() : fallback;
+  const raw = scrubMemoField(value, fallback);
   if (containsBannedGenericPhrase(raw)) {
-    return fallback;
+    return scrubUserFacingText(fallback);
   }
   return raw;
 }
@@ -166,35 +290,103 @@ function ensureStringArray(value: unknown, fallback: string[]): string[] {
   return items.length > 0 ? items : fallback;
 }
 
-function buildUserPrompt(input: CreateOrderInput, context?: ReportContext): string {
+function parseJsonContent<T>(content: string): T {
+  const trimmed = content.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/i);
+  const json = fenced ? fenced[1].trim() : trimmed;
+  const parsed = JSON.parse(json) as T;
+  if (parsed === null || typeof parsed !== "object") {
+    throw new Error("OpenAI returned invalid JSON");
+  }
+  return parsed;
+}
+
+export async function completeJsonForTask<T>(
+  task: OpenAITask,
+  system: string,
+  user: string,
+  temperature = 0.42,
+): Promise<T> {
+  const model = resolveModelForTask(task);
+  logOpenAIModel(task, model);
+  const client = getClient();
+  const completion = await client.chat.completions.create({
+    model,
+    temperature,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  });
+  const content = completion.choices[0]?.message?.content;
+  if (!content) {
+    throw new Error(`OpenAI empty response (task=${task}, model=${model})`);
+  }
+  return parseJsonContent<T>(content);
+}
+
+function buildEvidenceBlock(input: PipelineInput, context?: ReportContext): string {
+  const profileUrl = context?.scrapedUrl ?? input.socialProfileUrl;
+  const resolvedName = resolveCompanyName(profileUrl, {
+    markdown: context?.rawContent,
+    pageTitle: context?.scrapedTitle,
+    niche: input.industryNiche,
+  });
   const signals =
-    context?.extractedSignals ??
-    extractSignals(context?.rawContent, context?.scrapedUrl ?? input.socialProfileUrl);
+    context?.extractedSignals ?? extractSignals(context?.rawContent, profileUrl);
   const synthesis =
-    context?.signalSynthesis ?? synthesizeSignals(signals, signals.companyName);
+    context?.signalSynthesis ?? synthesizeSignals(signals, resolvedName);
   const synthesisBlock = formatSynthesisForPrompt(synthesis);
   const signalCatalog = formatSignalsCatalog(signals);
 
-  const evidenceBlock = signals.hasScrape
-    ? `## Signal synthesis (PRIMARY — company behavior understanding)
+  if (context?.founderSubmission) {
+    const scrapeNote = signals.hasScrape
+      ? `Supporting URLs scraped: ${context.supportingUrls?.join(", ") || profileUrl || "see below"}`
+      : "No website scrape — idea-analysis from founder submission only.";
+    return `## Founder submission (PRIMARY)
+${context.founderSubmission}
+
+${scrapeNote}
+
+## Signal synthesis
 ${synthesisBlock}
 
-## Raw signal catalog (SECONDARY — verification only)
-URL: ${context?.scrapedUrl ?? input.socialProfileUrl}
+## Signal catalog
+${signalCatalog}`;
+  }
+
+  if (signals.hasScrape) {
+    return `## Signal synthesis (PRIMARY)
+${synthesisBlock}
+
+## Raw signal catalog (SECONDARY)
+URL: ${profileUrl}
 ${context?.scrapedTitle ? `Page title: ${context.scrapedTitle}\n` : ""}
-${signalCatalog}`
-    : `## Signal synthesis
+${signalCatalog}`;
+  }
+  return `## Signal synthesis
 ${synthesisBlock}
 
 ## Raw signals
-No scrape. Do not invent on-page facts.`;
+No scrape. Ground analysis in founder submission only.`;
+}
 
-  return `Write a partner memo from synthesized company behavior — not isolated feature bullets.
+function buildStructuredUserPrompt(input: PipelineInput, context?: ReportContext): string {
+  const profileUrl = context?.scrapedUrl ?? input.socialProfileUrl;
+  const resolvedName = resolveCompanyName(profileUrl, {
+    markdown: context?.rawContent,
+    pageTitle: context?.scrapedTitle,
+    niche: input.industryNiche,
+  });
+  const evidenceBlock = buildEvidenceBlock(input, context);
+
+  return `Write the structured evidence section of a partner memo (not the investment thesis).
 
 Return JSON:
 
 {
-  "companyName": "<from synthesis or signals>",
+  "companyName": "${resolvedName}",
   "score": <integer 0-100>,
   "confidence": "Low" | "Medium" | "High",
   "coreContradiction": "<cite [SYN-*] ids>",
@@ -204,14 +396,11 @@ Return JSON:
   "nonObviousInsight": "<cite [SYN-*] ids>",
   "strategicParadox": "<cite [SYN-*] ids>",
   "hiddenMoatOrWeakness": "<cite [SYN-*] ids>",
-  "investmentVerdict": "<cite [SYN-*] ids>",
-  "whatThisCompanyActuallyIs": "<cite [SYN-*] ids>",
-  "moatAnalysis": "<cite [SYN-*] ids>",
   "whyThisMightFail": ["<cite [SYN-*]>", "..."],
   "founderQuestions": ["<question tied to synthesized behavior>", "..."],
   "websiteEvidence": ["[tag] (signal-id) fact from catalog", "..."],
   "evidenceBindings": [
-    { "field": "coreContradiction", "claim": "<one sentence>", "synthesisIds": ["SYN-PATTERN-1"], "signalIds": ["pricingModel-1", "workflow-1"] }
+    { "field": "coreContradiction", "claim": "<one sentence>", "synthesisIds": ["SYN-PATTERN-1"], "signalIds": ["pricingModel-1"] }
   ],
   "demand": { "level": "Low"|"Medium"|"High", "analysis": "<[SYN-*] citations>" },
   "competition": { "level": "Low"|"Medium"|"High", "analysis": "<[SYN-*] citations>" },
@@ -221,49 +410,80 @@ Return JSON:
 
 ${evidenceBlock}
 
-## Submission (stress-test)
-- Stated niche: ${input.industryNiche}
-- Founder concern: ${input.mainConcern}
-- Profile URL: ${input.socialProfileUrl}
-- Notes: ${input.additionalNotes || "(none)"}
+## Company identity (mandatory)
+- Use companyName exactly: ${resolvedName}
+
+## Submission
+- Category: ${input.industryNiche}
+- Startup idea: ${input.mainConcern}
+- Additional context: ${input.additionalNotes || "(none)"}
+${input.socialProfileUrl ? `- Primary link (if any): ${input.socialProfileUrl}` : "- No primary URL (idea-only analysis)"}
 
 Return JSON only.`;
 }
 
-function parseVCMemoJson(content: string): VCMemoJson {
-  const parsed = JSON.parse(content) as VCMemoJson;
-  if (parsed === null || typeof parsed !== "object") {
-    throw new Error("OpenAI returned invalid JSON");
-  }
-  return parsed;
+function buildThesisUserPrompt(
+  input: PipelineInput,
+  context: ReportContext | undefined,
+  structured: StructuredMemoJson,
+): string {
+  const profileUrl = context?.scrapedUrl ?? input.socialProfileUrl;
+  const resolvedName = resolveCompanyName(profileUrl, {
+    markdown: context?.rawContent,
+    pageTitle: context?.scrapedTitle,
+    niche: input.industryNiche,
+  });
+  const evidenceBlock = buildEvidenceBlock(input, context);
+
+  return `Write the investment thesis section. Align with the structured pass below.
+
+Return JSON:
+
+{
+  "bullCase": "<monetization + distribution + compounding; cite [SYN-*]>",
+  "bearCase": "<concrete failure path; cite [SYN-*]>",
+  "moatDurability": "<what compounds vs marketing>",
+  "replacementRisk": "<workflow replacement chain + incumbent bundle>",
+  "gtmWeakness": "<weakest GTM link; name channel>",
+  "whyNow": "<timing catalyst from evidence>",
+  "investmentVerdict": "<partner pass/hold/explore>",
+  "whatThisCompanyActuallyIs": "<buyer + job-to-be-done>",
+  "moatAnalysis": "<mechanism-level moat>"
 }
 
-function companyLabel(ai: VCMemoJson, input: CreateOrderInput, context?: ReportContext): string {
+## Structured pass (ground truth)
+${JSON.stringify(structured, null, 2)}
+
+${evidenceBlock}
+
+## Company: ${resolvedName}
+- Niche: ${input.industryNiche}
+- Founder concern: ${input.mainConcern}
+
+Return JSON only.`;
+}
+
+function companyLabel(ai: VCMemoJson, input: PipelineInput, context?: ReportContext): string {
+  const profileUrl = context?.scrapedUrl ?? input.socialProfileUrl;
   const fromAi = ai.companyName?.trim();
-  if (fromAi && fromAi.length > 1 && !/niche|industry|offer/i.test(fromAi)) {
+  if (
+    fromAi &&
+    fromAi.length > 1 &&
+    !/niche|industry|offer/i.test(fromAi) &&
+    !isBlockedCompanyName(fromAi)
+  ) {
     return fromAi;
   }
-  const signals =
-    context?.extractedSignals ??
-    extractSignals(context?.rawContent, context?.scrapedUrl ?? input.socialProfileUrl);
-  if (signals.companyName) return signals.companyName;
-  try {
-    const host = new URL(
-      (context?.scrapedUrl ?? input.socialProfileUrl).startsWith("http")
-        ? (context?.scrapedUrl ?? input.socialProfileUrl)
-        : `https://${context?.scrapedUrl ?? input.socialProfileUrl}`,
-    ).hostname;
-    const slug = host.replace(/^www\./, "").split(".")[0];
-    if (slug.length > 2) return slug.charAt(0).toUpperCase() + slug.slice(1);
-  } catch {
-    /* ignore */
-  }
-  return input.industryNiche.split(/[,/]/)[0]?.trim() || "this company";
+  return resolveCompanyName(profileUrl, {
+    markdown: context?.rawContent,
+    niche: input.industryNiche,
+    aiName: fromAi && !isBlockedCompanyName(fromAi) ? fromAi : undefined,
+  });
 }
 
 export function mapAIJsonToReport(
   orderId: string,
-  input: CreateOrderInput,
+  input: PipelineInput,
   reportId: string,
   ai: VCMemoJson,
   context?: ReportContext,
@@ -310,6 +530,9 @@ export function mapAIJsonToReport(
     ai.moatAnalysis ?? "",
     ai.whatThisCompanyActuallyIs ?? "",
     ai.nonObviousInsight ?? "",
+    ai.bullCase ?? "",
+    ai.bearCase ?? "",
+    ai.gtmWeakness ?? "",
   ]);
   if (genericCheck) {
     console.warn("[SignalProof] Memo may be generic — check OpenAI output for", company);
@@ -357,6 +580,47 @@ export function mapAIJsonToReport(
     `${company}'s moat, if any, must be traced to a specific mechanism (data, distribution, workflow, brand) — not category tailwinds.`,
   );
 
+  const pricingHint = signals.pricingModel[0]?.text.slice(0, 90);
+  const integrationHint = signals.integrations[0]?.text.slice(0, 90);
+  const apiHint = signals.apiSignals[0]?.text.slice(0, 90);
+  const hiringHint = signals.hiringSignals[0]?.text.slice(0, 90);
+  const distHint = signals.distributionSurface[0]?.text.slice(0, 90) ?? signals.communitySignals[0]?.text.slice(0, 90);
+
+  const bullCase = ensureString(
+    ai.bullCase,
+    pricingHint
+      ? `${company} can win if ${pricingHint} converts repeat workflow into paid seats and ${distHint ? `distribution (${distHint})` : "distribution"} scales without paid CAC blowout.`
+      : `${company} upside requires proving paid conversion on "${input.mainConcern}" with visible monetization on the site.`,
+  );
+  const bearCase = ensureString(
+    ai.bearCase,
+    integrationHint || apiHint
+      ? `Bear: incumbents bundle similar capability; ${company}'s embed surface (${integrationHint ?? apiHint}) may not survive platform pricing or roadmap shifts.`
+      : `Bear: buyers substitute with incumbent suites; ${company} lacks disclosed API/integrations to create switching costs.`,
+  );
+  const moatDurability = ensureString(
+    ai.moatDurability,
+    apiHint
+      ? `Durability depends on API/workflow embed depth (${apiHint}) — not homepage positioning.`
+      : `Durability unproven without API, integration, or pricing evidence on the public site.`,
+  );
+  const replacementRisk = ensureString(
+    ai.replacementRisk,
+    `Replacement chain: buyer currently solves "${input.mainConcern}" with adjacent tools; ${company} must displace a daily habit, not a one-off task.`,
+  );
+  const gtmWeakness = ensureString(
+    ai.gtmWeakness,
+    distHint
+      ? `GTM risk: reliance on ${distHint} — conversion to paid and enterprise motion not evidenced.`
+      : `GTM risk: no clear primary acquisition channel or enterprise sales path on the public site.`,
+  );
+  const whyNow = ensureString(
+    ai.whyNow,
+    hiringHint
+      ? `Timing: hiring motion (${hiringHint}) suggests product push — category window may close as incumbents ship fast-follow bundles.`
+      : `Timing: category moving quickly; ${company} must show pull before model/API parity erodes differentiation.`,
+  );
+
   const whyThisMightFail = ensureStringArray(ai.whyThisMightFail, [
     `${company}: upstream platform shifts could compress differentiation faster than GTM can adapt.`,
     `${company}: the ICP that loves the demo may not be the budget holder for "${input.mainConcern}".`,
@@ -371,7 +635,7 @@ export function mapAIJsonToReport(
     ai.websiteEvidence,
     signals.hasScrape
       ? signalsToWebsiteEvidence(signals)
-      : ["[positioning] No website scrape — memo grounded in submission and URL only."],
+      : ["[submission] Idea-analysis only — memo grounded in founder submission, not a live site scrape."],
   );
 
   const finalConfidence =
@@ -393,7 +657,7 @@ export function mapAIJsonToReport(
 
   const marketAnalysis = extractAnalysis(
     ai.demand,
-    `${company}: demand for the wedge behind "${input.mainConcern}" reads ${demandLevel.toLowerCase()} — validate with paid pilots, not category TAM narratives.`,
+    `${company}: demand for the wedge behind "${input.mainConcern}" reads ${demandLevel.toLowerCase()} — underwrite with paid cohort retention, not category TAM narratives.`,
   );
   const competitionAnalysis = extractAnalysis(
     ai.competition,
@@ -436,6 +700,12 @@ export function mapAIJsonToReport(
     nonObviousInsight,
     strategicParadox,
     hiddenMoatOrWeakness,
+    bullCase,
+    bearCase,
+    moatDurability,
+    replacementRisk,
+    gtmWeakness,
+    whyNow,
     extractedSignals: signals,
     evidenceBindings,
     evidenceTier: signals.evidenceTier,
@@ -450,26 +720,78 @@ export function mapAIJsonToReport(
 
 export async function generateAIReport(
   orderId: string,
-  input: CreateOrderInput,
+  input: PipelineInput,
   reportId: string,
   context?: ReportContext,
 ): Promise<ValidationReport> {
-  const client = getClient();
-  const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.42,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: buildUserPrompt(input, context) },
-    ],
-  });
+  const structured = await completeJsonForTask<StructuredMemoJson>(
+    "structured_evidence",
+    SYSTEM_STRUCTURED_PROMPT,
+    buildStructuredUserPrompt(input, context),
+  );
 
-  const content = completion.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error("OpenAI returned an empty response");
-  }
+  const thesis = await completeJsonForTask<InvestmentThesisJson>(
+    "investment_thesis",
+    SYSTEM_THESIS_PROMPT,
+    buildThesisUserPrompt(input, context, structured),
+    0.35,
+  );
 
-  const ai = parseVCMemoJson(content);
+  const ai: VCMemoJson = { ...structured, ...thesis };
   return mapAIJsonToReport(orderId, input, reportId, ai, context);
+}
+
+export type MarketEvolutionRefineContext = {
+  companyName: string;
+  industryNiche: string;
+  signalCatalog: string;
+};
+
+export async function refineMarketEvolutionWithAI(
+  evolution: MarketEvolutionInference,
+  ctx: MarketEvolutionRefineContext,
+): Promise<MarketEvolutionInference> {
+  try {
+    return await completeJsonForTask<MarketEvolutionInference>(
+      "market_evolution",
+      SYSTEM_MARKET_EVOLUTION_PROMPT,
+      `Refine market evolution for ${ctx.companyName} (${ctx.industryNiche}).
+
+${ctx.signalCatalog}
+
+Input JSON:
+${JSON.stringify(evolution)}`,
+      0.3,
+    );
+  } catch (error) {
+    console.warn("[SignalProof] market_evolution AI refine failed:", error);
+    return evolution;
+  }
+}
+
+export type StrategicSimulationRefineContext = {
+  companyName: string;
+  industryNiche: string;
+  bullCase?: string;
+  bearCase?: string;
+};
+
+export async function refineStrategicSimulationWithAI(
+  bundle: StrategicSimulationBundle,
+  ctx: StrategicSimulationRefineContext,
+): Promise<StrategicSimulationBundle> {
+  try {
+    return await completeJsonForTask<StrategicSimulationBundle>(
+      "strategic_simulation",
+      SYSTEM_STRATEGIC_SIMULATION_PROMPT,
+      `Refine strategic simulation for ${ctx.companyName} (${ctx.industryNiche}).
+${ctx.bullCase ? `Bull: ${ctx.bullCase}\n` : ""}${ctx.bearCase ? `Bear: ${ctx.bearCase}\n` : ""}
+Input JSON:
+${JSON.stringify(bundle)}`,
+      0.3,
+    );
+  } catch (error) {
+    console.warn("[SignalProof] strategic_simulation AI refine failed:", error);
+    return bundle;
+  }
 }

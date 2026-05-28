@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PRIMARY_CTA } from "@/lib/site-copy";
 
 type NavItem = { href: string; label: string };
 
@@ -10,7 +11,7 @@ type SiteHeaderProps = {
 
 export function SiteHeader({
   nav = [],
-  cta = { href: "/order", label: "Get report" },
+  cta = { href: "/order", label: PRIMARY_CTA },
   variant = "marketing",
 }: SiteHeaderProps) {
   return (

@@ -12,7 +12,9 @@ function formatDate(iso: string) {
 
 export default async function AdminOrdersPage() {
   const orders = await readOrders();
-  const pending = orders.filter((o) => o.status === "pending").length;
+  const pending = orders.filter(
+    (o) => o.status === "pending_payment" || o.status === "pending",
+  ).length;
 
   return (
     <AdminShell
@@ -53,8 +55,9 @@ export default async function AdminOrdersPage() {
               <Card className="p-5" key={order.id}>
                 <p className="text-xs text-subtle">{formatDate(order.createdAt)}</p>
                 <p className="mt-2 font-medium">{order.email}</p>
-                <p className="mt-1 text-sm text-muted">{order.industryNiche}</p>
-                <p className="mt-2 text-sm text-muted line-clamp-2">{order.mainConcern}</p>
+                <p className="mt-1 text-sm text-muted line-clamp-3">
+                  {order.startupIdea ?? order.mainConcern ?? "—"}
+                </p>
                 <div className="mt-4 flex items-center justify-between">
                   <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs capitalize text-muted">
                     {order.status}
@@ -80,9 +83,8 @@ export default async function AdminOrdersPage() {
                     <th className="px-5 py-4 font-medium text-subtle">Created</th>
                     <th className="px-5 py-4 font-medium text-subtle">Report</th>
                     <th className="px-5 py-4 font-medium text-subtle">Email</th>
-                    <th className="px-5 py-4 font-medium text-subtle">Profile</th>
-                    <th className="px-5 py-4 font-medium text-subtle">Industry</th>
-                    <th className="px-5 py-4 font-medium text-subtle">Concern</th>
+                    <th className="px-5 py-4 font-medium text-subtle">Startup idea</th>
+                    <th className="px-5 py-4 font-medium text-subtle">Context</th>
                     <th className="px-5 py-4 font-medium text-subtle">Status</th>
                   </tr>
                 </thead>
@@ -105,21 +107,11 @@ export default async function AdminOrdersPage() {
                         )}
                       </td>
                       <td className="px-5 py-4 font-medium">{order.email}</td>
-                      <td className="max-w-[12rem] px-5 py-4">
-                        <a
-                          className="break-all text-muted hover:text-accent"
-                          href={order.socialProfileUrl}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          {order.socialProfileUrl}
-                        </a>
+                      <td className="max-w-[16rem] px-5 py-4 text-muted line-clamp-3">
+                        {order.startupIdea ?? order.mainConcern ?? "—"}
                       </td>
-                      <td className="max-w-[10rem] px-5 py-4 text-muted">
-                        {order.industryNiche}
-                      </td>
-                      <td className="max-w-[12rem] px-5 py-4 text-muted">
-                        {order.mainConcern}
+                      <td className="max-w-[10rem] px-5 py-4 text-muted line-clamp-2">
+                        {order.additionalContext ?? order.additionalNotes ?? "—"}
                       </td>
                       <td className="px-5 py-4">
                         <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs capitalize text-muted">

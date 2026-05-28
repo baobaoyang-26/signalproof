@@ -20,24 +20,29 @@ function siteUrl(): string {
   return "http://localhost:3000";
 }
 
+import { CheckoutReturnGuard } from "@/components/checkout-return-guard";
+import { METADATA, SITE_NAME } from "@/lib/site-copy";
+
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
   title: {
-    default: "SignalProof — AI Validation Reports for Founders",
-    template: "%s | SignalProof",
+    default: METADATA.title,
+    template: `%s | ${SITE_NAME}`,
   },
-  description:
-    "VC-grade startup validation from real website evidence and market signal. Delivered in 24 hours.",
+  description: METADATA.description,
   icons: {
     icon: "/favicon.svg",
   },
+  other: {
+    google: "notranslate",
+  },
   openGraph: {
-    title: "SignalProof — Build from evidence, not intuition",
-    description:
-      "Partner-level validation memos powered by live website scrape and AI analysis.",
+    title: METADATA.ogTitle,
+    description: METADATA.ogDescription,
     url: siteUrl(),
-    siteName: "SignalProof",
+    siteName: SITE_NAME,
     type: "website",
+    locale: "en_US",
   },
 };
 
@@ -47,8 +52,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html className="dark" lang="en">
-      <body className="min-h-screen bg-canvas text-white antialiased">{children}</body>
+    <html className="dark notranslate" lang="en" translate="no">
+      <body className="min-h-screen bg-canvas text-white antialiased notranslate" translate="no">
+        <CheckoutReturnGuard />
+        {children}
+      </body>
     </html>
   );
 }

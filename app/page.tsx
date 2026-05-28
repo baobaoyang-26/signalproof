@@ -1,113 +1,60 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { SiteHeader } from "@/components/ui/site-header";
-import { CHECKOUT_BUTTON_LABEL, LEMONSQUEEZY_CHECKOUT_URL } from "@/lib/checkout";
-
-const metrics = [
-  { value: "12k+", label: "Signals processed" },
-  { value: "180+", label: "Partner memos" },
-  { value: "24h", label: "Delivery SLA" },
-];
-
-const steps = [
-  {
-    step: "01",
-    title: "Submit profile",
-    body: "Share your website or social profile plus niche context.",
-  },
-  {
-    step: "02",
-    title: "We scrape & analyze",
-    body: "Firecrawl extracts live evidence; GPT produces a VC-style memo.",
-  },
-  {
-    step: "03",
-    title: "Shareable report",
-    body: "Score, moat, risks, and investment verdict in one link.",
-  },
-];
-
-const plans = [
-  {
-    name: "Validation Report",
-    price: "$29",
-    description: "Full partner memo for one market wedge.",
-    features: [
-      "Website evidence scrape",
-      "Validation score & confidence",
-      "Moat & failure analysis",
-      "Shareable report URL",
-    ],
-    featured: true,
-  },
-  {
-    name: "Deep Dive",
-    price: "$79",
-    description: "Expanded diligence for compare-and-build decisions.",
-    features: [
-      "Everything in Validation",
-      "Extended competition map",
-      "Founder diligence questions",
-      "Priority delivery",
-    ],
-    featured: false,
-  },
-];
-
-const previewScores = [
-  { label: "Validation", value: 74 },
-  { label: "Demand", value: 68 },
-  { label: "Competition", value: 52 },
-];
+import { PRIMARY_CTA_LABEL } from "@/lib/checkout";
+import {
+  ANALYZED_COMPANIES,
+  FOOTER_TAGLINE,
+  HERO,
+  LANDING,
+  PREVIEW_SCORES,
+  PRICING,
+  SAMPLE_INSIGHTS,
+} from "@/lib/site-copy";
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-canvas">
+    <div className="notranslate min-h-screen bg-canvas" lang="en" translate="no">
       <div className="pointer-events-none fixed inset-0 bg-hero-glow" />
       <div className="pointer-events-none fixed inset-0 bg-grid opacity-40" />
       <SiteHeader
-        cta={{ href: "/order", label: "Get report" }}
-        nav={[
-          { href: "#product", label: "Product" },
-          { href: "#process", label: "Process" },
-          { href: "#pricing", label: "Pricing" },
-        ]}
+        cta={{ href: "/order", label: PRIMARY_CTA_LABEL }}
+        nav={[...LANDING.nav]}
       />
 
       <main className="relative">
         <section className="mx-auto max-w-7xl px-5 pb-20 pt-16 sm:px-8 sm:pt-24 lg:pt-28">
           <div className="mx-auto max-w-4xl text-center">
-            <p className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-1.5 text-xs font-medium text-muted">
+            <p className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-1.5 text-xs font-medium tracking-wide text-muted">
               <span className="size-1.5 rounded-full bg-accent shadow-[0_0_8px_#3b82f6]" />
-              VC-grade validation · Powered by live website evidence
+              {HERO.eyebrow}
             </p>
-            <h1 className="mt-8 text-4xl font-semibold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl">
-              <span className="text-gradient">Evidence-first</span>
+            <h1 className="mt-8 text-4xl font-semibold leading-[1.08] tracking-tight sm:text-6xl lg:text-[4.25rem] lg:leading-[1.05]">
+              <span className="text-gradient">{HERO.title}</span>
               <br />
-              startup validation
+              <span className="text-white/95">{HERO.titleAccent}</span>
             </h1>
-            <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-muted">
-              SignalProof turns your website and niche into a partner-level investment
-              memo — score, moat, risks, and verdict — not another generic AI summary.
+            <p className="mx-auto mt-7 max-w-2xl text-lg leading-8 text-muted sm:text-xl sm:leading-9">
+              {HERO.subtitle}
             </p>
             <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Link
                 className="w-full rounded-lg bg-white px-8 py-3.5 text-center text-sm font-semibold text-canvas transition hover:bg-white/90 sm:w-auto"
                 href="/order"
               >
-                Start validation
+                {PRIMARY_CTA_LABEL}
               </Link>
               <a
                 className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-8 py-3.5 text-center text-sm font-medium text-white transition hover:border-white/20 sm:w-auto"
-                href="#product"
+                href="#insights"
               >
-                See report preview
+                {HERO.secondaryCta}
               </a>
             </div>
           </div>
 
           <div className="mx-auto mt-16 grid max-w-3xl gap-4 sm:grid-cols-3">
-            {metrics.map((m) => (
+            {LANDING.metrics.map((m) => (
               <Card className="p-5 text-center" key={m.label}>
                 <p className="text-2xl font-semibold tabular-nums text-white">{m.value}</p>
                 <p className="mt-1 text-xs text-subtle">{m.label}</p>
@@ -116,25 +63,81 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="border-y border-white/[0.06] bg-surface/40 py-16 sm:py-20" id="product">
-          <div className="mx-auto grid max-w-7xl gap-10 px-5 sm:px-8 lg:grid-cols-2 lg:items-center">
+        <section
+          className="border-y border-white/[0.06] bg-surface/40 py-16 sm:py-20"
+          id="insights"
+        >
+          <div className="mx-auto max-w-7xl px-5 sm:px-8">
+            <div className="mx-auto max-w-2xl text-center">
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent">
+                {LANDING.insights.eyebrow}
+              </p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+                {LANDING.insights.title}
+              </h2>
+              <p className="mt-4 text-sm leading-7 text-muted">{LANDING.insights.subtitle}</p>
+            </div>
+            <div className="mt-12 grid gap-5 md:grid-cols-3">
+              {SAMPLE_INSIGHTS.map((item) => (
+                <Card
+                  className={`relative overflow-hidden border-white/[0.08] p-6 bg-gradient-to-br ${item.accent}`}
+                  key={item.company}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-[0.15em] text-accent">
+                    {item.company}
+                  </p>
+                  <blockquote className="mt-5 space-y-3">
+                    {item.lines.map((line) => (
+                      <p
+                        className="text-base font-medium leading-snug text-white sm:text-lg"
+                        key={line}
+                      >
+                        {line}
+                      </p>
+                    ))}
+                  </blockquote>
+                  <p className="mt-6 text-[10px] uppercase tracking-wider text-subtle">
+                    {LANDING.insights.sampleTag}
+                  </p>
+                </Card>
+              ))}
+            </div>
+
+            <div className="mt-16 text-center">
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-subtle">
+                {LANDING.insights.companiesEyebrow}
+              </p>
+              <p className="mt-3 text-sm text-muted">{LANDING.insights.companiesSubtitle}</p>
+              <ul className="mt-8 flex flex-wrap items-center justify-center gap-3">
+                {ANALYZED_COMPANIES.map((name) => (
+                  <li
+                    className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-white"
+                    key={name}
+                  >
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 sm:py-24" id="product">
+          <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent">
-                Report preview
+                {LANDING.product.eyebrow}
               </p>
               <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-                Built to look like internal VC tooling
+                {LANDING.product.title}
               </h2>
-              <p className="mt-4 text-muted leading-7">
-                Dark dashboard layout, score visualization, evidence blocks, and a
-                shareable link you can forward to co-founders or advisors.
-              </p>
+              <p className="mt-4 leading-7 text-muted">{LANDING.product.subtitle}</p>
             </div>
             <Card className="overflow-hidden p-6 glow" glow>
               <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
-                <span className="font-mono text-xs text-subtle">SP-VALIDATION</span>
+                <span className="font-mono text-xs text-subtle">{LANDING.product.previewTag}</span>
                 <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-xs text-success">
-                  Strong Opportunity
+                  {LANDING.product.verdictBadge}
                 </span>
               </div>
               <div className="mt-6 flex items-center gap-8">
@@ -142,7 +145,7 @@ export default function Home() {
                   74
                 </div>
                 <div className="flex-1 space-y-3">
-                  {previewScores.map((s) => (
+                  {PREVIEW_SCORES.map((s) => (
                     <div key={s.label}>
                       <div className="mb-1 flex justify-between text-xs text-muted">
                         <span>{s.label}</span>
@@ -158,21 +161,18 @@ export default function Home() {
                   ))}
                 </div>
               </div>
-              <p className="mt-6 text-sm leading-6 text-muted">
-                Moat analysis, website evidence, and investment verdict — structured
-                like a Monday partner memo.
-              </p>
+              <p className="mt-6 text-sm leading-6 text-muted">{LANDING.product.previewFooter}</p>
             </Card>
           </div>
         </section>
 
         <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 sm:py-24" id="process">
           <p className="text-xs font-medium uppercase tracking-[0.2em] text-subtle">
-            How it works
+            {LANDING.process.eyebrow}
           </p>
-          <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">Three steps to a decision</h2>
+          <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">{LANDING.process.title}</h2>
           <div className="mt-10 grid gap-4 md:grid-cols-3">
-            {steps.map((item) => (
+            {LANDING.process.steps.map((item) => (
               <Card className="p-6" key={item.title}>
                 <span className="font-mono text-xs text-accent">{item.step}</span>
                 <h3 className="mt-4 text-lg font-semibold">{item.title}</h3>
@@ -189,46 +189,86 @@ export default function Home() {
           <div className="mx-auto max-w-7xl px-5 sm:px-8">
             <div className="mx-auto max-w-2xl text-center">
               <p className="text-xs font-medium uppercase tracking-[0.2em] text-subtle">
-                Pricing
+                {LANDING.pricing.eyebrow}
               </p>
-              <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">
-                One-time reports. Premium output.
-              </h2>
+              <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">{LANDING.pricing.title}</h2>
+              <p className="mt-4 text-sm leading-7 text-muted">{LANDING.pricing.subtitle}</p>
             </div>
             <div className="mt-12 grid gap-6 lg:grid-cols-2">
-              {plans.map((plan) => (
-                <Card
-                  className={`p-8 ${plan.featured ? "border-accent/30 shadow-glow" : ""}`}
-                  glow={plan.featured}
-                  key={plan.name}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="text-xl font-semibold">{plan.name}</h3>
-                      <p className="mt-2 text-sm text-muted">{plan.description}</p>
-                    </div>
-                    <p className="text-3xl font-semibold tabular-nums">{plan.price}</p>
+              <Card className="border-accent/30 p-8 shadow-glow" glow>
+                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-accent">
+                  {LANDING.pricing.availableNow}
+                </p>
+                <div className="mt-4 flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-semibold">{LANDING.pricing.singleMemo.name}</h3>
+                    <p className="mt-2 text-sm font-medium text-white/90">
+                      {LANDING.pricing.singleMemo.tagline}
+                    </p>
+                    <p className="mt-3 text-sm text-muted">
+                      {LANDING.pricing.singleMemo.description}
+                    </p>
                   </div>
-                  <ul className="mt-8 space-y-3">
-                    {plan.features.map((f) => (
-                      <li className="flex gap-3 text-sm text-muted" key={f}>
-                        <span className="text-accent">→</span>
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                  <a
-                    className={`mt-8 inline-flex w-full items-center justify-center rounded-lg py-3 text-sm font-semibold transition ${
-                      plan.featured
-                        ? "bg-white text-canvas hover:bg-white/90"
-                        : "border border-white/10 bg-white/[0.04] text-white hover:border-white/20"
-                    }`}
-                    href={LEMONSQUEEZY_CHECKOUT_URL}
-                  >
-                    {CHECKOUT_BUTTON_LABEL}
-                  </a>
-                </Card>
-              ))}
+                  <div className="shrink-0 text-right">
+                    <p className="text-2xl font-semibold tabular-nums text-white sm:text-3xl">
+                      {PRICING.singleMemo.displayPrice}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-subtle">
+                      {PRICING.singleMemo.billingNote}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-8 text-xs font-medium uppercase tracking-wider text-subtle">
+                  {LANDING.pricing.includesLabel}
+                </p>
+                <ul className="mt-4 space-y-3">
+                  {LANDING.pricing.singleMemo.outcomes.map((outcome) => (
+                    <li className="flex gap-3 text-sm text-white" key={outcome}>
+                      <span className="text-success">✓</span>
+                      {outcome}
+                    </li>
+                  ))}
+                </ul>
+                <Link
+                  className="mt-8 inline-flex w-full items-center justify-center rounded-lg bg-white py-3 text-sm font-semibold text-canvas transition hover:bg-white/90"
+                  href="/order"
+                >
+                  {PRIMARY_CTA_LABEL}
+                </Link>
+              </Card>
+
+              <Card
+                aria-disabled
+                className="pointer-events-none border-white/[0.06] bg-surface/40 p-8 opacity-55"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-subtle">
+                  {LANDING.pricing.advanced.badge}
+                </p>
+                <div className="mt-4">
+                  <h3 className="text-xl font-semibold text-white/80">
+                    {LANDING.pricing.advanced.name}
+                  </h3>
+                  <p className="mt-3 text-sm text-muted">{LANDING.pricing.advanced.description}</p>
+                </div>
+                <p className="mt-8 text-xs font-medium uppercase tracking-wider text-subtle">
+                  {LANDING.pricing.includesLabel}
+                </p>
+                <ul className="mt-4 space-y-3">
+                  {LANDING.pricing.advanced.outcomes.map((outcome) => (
+                    <li className="flex gap-3 text-sm text-muted" key={outcome}>
+                      <span className="text-subtle">✓</span>
+                      {outcome}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  className="mt-8 inline-flex w-full cursor-not-allowed items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] py-3 text-sm font-semibold text-subtle"
+                  disabled
+                  type="button"
+                >
+                  {LANDING.pricing.advanced.cta}
+                </button>
+              </Card>
             </div>
           </div>
         </section>
@@ -237,25 +277,23 @@ export default function Home() {
           <Card className="relative overflow-hidden px-8 py-14 text-center sm:px-12" glow>
             <div className="pointer-events-none absolute inset-0 bg-hero-glow opacity-60" />
             <div className="relative">
-              <h2 className="text-3xl font-semibold sm:text-4xl">
-                Validate before you build
+              <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+                {HERO.closingLine}
               </h2>
-              <p className="mx-auto mt-4 max-w-xl text-muted">
-                Submit your profile. Get a shareable partner memo in 24 hours.
-              </p>
+              <p className="mx-auto mt-5 max-w-xl text-base leading-8 text-muted">{HERO.subtitle}</p>
               <Link
                 className="mt-8 inline-flex rounded-lg bg-white px-8 py-3.5 text-sm font-semibold text-canvas hover:bg-white/90"
                 href="/order"
               >
-                {CHECKOUT_BUTTON_LABEL}
+                {PRIMARY_CTA_LABEL}
               </Link>
             </div>
           </Card>
         </section>
       </main>
 
-      <footer className="border-t border-white/[0.06] py-8 text-center text-xs text-subtle">
-        SignalProof · Confidential validation memos
+      <footer className="border-t border-white/[0.06] py-10 text-center text-xs leading-6 text-subtle">
+        SignalProof · {FOOTER_TAGLINE}
       </footer>
     </div>
   );

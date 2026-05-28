@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { MemoCard } from "@/components/report/memo-card";
 import { LevelBadge } from "@/components/report/level-badge";
 import { ReportShareBar } from "@/components/report/report-share-bar";
 import { ScoreGauge } from "@/components/report/score-gauge";
@@ -8,12 +9,22 @@ import { SectionCard } from "@/components/report/section-card";
 import { TrendBar } from "@/components/report/trend-bar";
 import { VerdictBadge } from "@/components/report/verdict-badge";
 import { Card } from "@/components/ui/card";
+import { getOrderByReportId } from "@/lib/orders";
 import {
+  EVIDENCE_LIMITED_MESSAGE,
+  evidenceTierLabel,
   formatReportNumber,
-  getCompetitionAnalysis,
   getOpportunityVerdict,
+  isWeakEvidence,
   levelToPercent,
 } from "@/lib/report-display";
+import {
+  prepareReportView,
+  REPORT_INTRO,
+  REPORT_LABELS,
+  REPORT_SECTION_COPY,
+  verdictHeadline,
+} from "@/lib/report-view";
 import { getReportById } from "@/lib/reports";
 
 function formatDate(iso: string) {
@@ -21,10 +32,6 @@ function formatDate(iso: string) {
     dateStyle: "long",
     timeStyle: "short",
   }).format(new Date(iso));
-}
-
-function memoParagraph(text: string | undefined, fallback: string) {
-  return text?.trim() || fallback;
 }
 
 function confidenceStyles(level: string) {
@@ -49,14 +56,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const report = await getReportById(id);
   if (!report) return { title: "Report not found" };
 
+  const order = await getOrderByReportId(id);
+  const view = prepareReportView(report, order?.email);
   const verdict = getOpportunityVerdict(report.validationScore);
-  const titleName = report.companyName ?? report.industryNiche;
   return {
-    title: `${titleName} — Validation Memo`,
-    description: `Score ${report.validationScore}/100 · ${verdict} · ${report.verdict}`,
+    title: `${view.companyTitle} — ${REPORT_LABELS.memoTitle}`,
+    description: `Score ${report.validationScore}/100 · ${verdict}`,
     openGraph: {
-      title: `SignalProof · ${titleName}`,
-      description: `Validation score ${report.validationScore} — ${verdict}`,
+      title: `SignalProof · ${view.companyTitle}`,
+      description: `Survivability score ${report.validationScore}/100`,
       type: "article",
     },
   };
@@ -70,23 +78,18 @@ export default async function ReportPage({ params }: PageProps) {
     notFound();
   }
 
+  const order = await getOrderByReportId(id);
+  const view = prepareReportView(report, order?.email);
+
   const reportNumber = formatReportNumber(report.id);
   const reportUrl = `${siteUrl()}/report/${report.id}`;
   const opportunityVerdict = getOpportunityVerdict(report.validationScore);
-  const competitionAnalysis = getCompetitionAnalysis(report);
   const demandPercent = levelToPercent(report.demandLevel);
   const competitionPercent = levelToPercent(report.competitionLevel);
   const confidence = report.confidence ?? "Medium";
-  const websiteEvidence = report.websiteEvidence ?? [];
-  const whyFail = report.whyThisMightFail ?? report.risks;
-  const founderQuestions = report.founderQuestions ?? report.recommendations;
+  const weakEvidence = isWeakEvidence(report);
 
-  const verdictHeadline =
-    report.verdict === "Go"
-      ? "Go — conditional"
-      : report.verdict === "Caution"
-        ? "Hold — further diligence"
-        : "No-Go — pass at this time";
+  const verdictTitle = verdictHeadline(report.verdict);
 
   return (
     <div className="min-h-screen bg-canvas bg-grid">
@@ -101,7 +104,7 @@ export default async function ReportPage({ params }: PageProps) {
             <span className="text-sm font-semibold">SignalProof</span>
           </Link>
           <span className="hidden text-[10px] font-medium uppercase tracking-[0.2em] text-subtle sm:inline">
-            Confidential · Partner Memo
+            {REPORT_LABELS.confidential}
           </span>
         </div>
       </header>
@@ -113,48 +116,58 @@ export default async function ReportPage({ params }: PageProps) {
           </Card>
         </div>
 
-        <article className="overflow-hidden rounded-2xl border border-white/[0.08] bg-surface/80 shadow-card backdrop-blur-sm">
+        <article
+          className="report-document notranslate overflow-hidden rounded-2xl border border-white/[0.08] bg-surface/80 shadow-card backdrop-blur-sm"
+          lang="en"
+          translate="no"
+        >
           <div className="border-b border-white/[0.06] bg-elevated/80 px-6 py-8 sm:px-10 sm:py-10">
             <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
-                  SignalProof · Investment Validation Memo
+                  SignalProof · {REPORT_LABELS.memoTitle}
                 </p>
                 <p className="mt-3 font-mono text-sm text-muted">{reportNumber}</p>
                 <h1 className="mt-4 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl lg:text-5xl">
-                  {report.companyName ?? report.industryNiche}
+                  {view.companyTitle}
                 </h1>
-                {report.companyName ? (
-                  <p className="mt-2 text-sm text-muted">{report.industryNiche}</p>
+                <p className="mt-2 text-sm text-muted">{report.industryNiche}</p>
+                {report.mainConcern ? (
+                  <p className="mt-3 max-w-2xl text-sm leading-7 text-muted line-clamp-4">
+                    {report.mainConcern}
+                  </p>
                 ) : null}
+                <p className="mt-6 max-w-2xl text-sm leading-7 text-muted/90">{REPORT_INTRO}</p>
                 <dl className="mt-8 grid gap-5 text-sm sm:grid-cols-2">
                   <div>
                     <dt className="text-xs font-medium uppercase tracking-wider text-subtle">
-                      Prepared for
+                      {REPORT_LABELS.preparedFor}
                     </dt>
-                    <dd className="mt-1.5 text-white">{report.email}</dd>
+                    <dd className="mt-1.5 text-white">{view.email}</dd>
                   </div>
                   <div>
                     <dt className="text-xs font-medium uppercase tracking-wider text-subtle">
-                      Created
+                      {REPORT_LABELS.created}
                     </dt>
                     <dd className="mt-1.5 text-white">{formatDate(report.createdAt)}</dd>
                   </div>
-                  <div className="sm:col-span-2">
-                    <dt className="text-xs font-medium uppercase tracking-wider text-subtle">
-                      Website / profile
-                    </dt>
-                    <dd className="mt-1.5 break-all">
-                      <a
-                        className="text-accent underline-offset-2 hover:underline"
-                        href={report.socialProfileUrl}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {report.scrapedUrl ?? report.socialProfileUrl}
-                      </a>
-                    </dd>
-                  </div>
+                  {(report.scrapedUrl ?? report.socialProfileUrl)?.trim() ? (
+                    <div className="sm:col-span-2">
+                      <dt className="text-xs font-medium uppercase tracking-wider text-subtle">
+                        {REPORT_LABELS.website}
+                      </dt>
+                      <dd className="mt-1.5 break-all">
+                        <a
+                          className="text-accent underline-offset-2 hover:underline"
+                          href={report.scrapedUrl ?? report.socialProfileUrl}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          {report.scrapedUrl ?? report.socialProfileUrl}
+                        </a>
+                      </dd>
+                    </div>
+                  ) : null}
                 </dl>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2 lg:flex-col lg:items-end">
@@ -162,27 +175,24 @@ export default async function ReportPage({ params }: PageProps) {
                 <span
                   className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${confidenceStyles(confidence)}`}
                 >
-                  Confidence · {confidence}
-                </span>
-                {report.marketNode ? (
-                  <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-medium text-accent capitalize">
-                    Layer · {report.marketNode.marketLayer.replace(/-/g, " ")}
-                  </span>
-                ) : null}
-                <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-muted">
-                  Evidence · {report.evidenceTier ?? "unknown"}
-                  {report.evidenceScore != null ? ` (${report.evidenceScore})` : ""}
+                  {REPORT_LABELS.confidence} · {confidence}
                 </span>
                 <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-muted">
-                  {report.source === "openai" ? "AI memo" : "Fallback memo"}
+                  {REPORT_LABELS.evidenceStrength} · {evidenceTierLabel(report.evidenceTier)}
                 </span>
               </div>
             </div>
           </div>
 
+          {weakEvidence ? (
+            <div className="border-b border-warn/20 bg-warn/5 px-6 py-4 sm:px-10">
+              <p className="text-sm leading-7 text-muted">{EVIDENCE_LIMITED_MESSAGE}</p>
+            </div>
+          ) : null}
+
           <section className="border-b border-white/[0.06] px-6 py-10 sm:px-10 sm:py-14">
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">
-              Executive summary
+              {REPORT_LABELS.executiveSummary}
             </p>
             <div className="mt-8 grid gap-10 lg:grid-cols-[auto_1fr] lg:items-center">
               <div className="flex justify-center lg:justify-start">
@@ -191,7 +201,7 @@ export default async function ReportPage({ params }: PageProps) {
               <div className="grid gap-4 sm:grid-cols-2">
                 <Card className="p-5">
                   <p className="text-xs font-medium uppercase tracking-[0.12em] text-subtle">
-                    Demand
+                    {REPORT_LABELS.demand}
                   </p>
                   <div className="mt-3">
                     <LevelBadge level={report.demandLevel} />
@@ -202,7 +212,7 @@ export default async function ReportPage({ params }: PageProps) {
                 </Card>
                 <Card className="p-5">
                   <p className="text-xs font-medium uppercase tracking-[0.12em] text-subtle">
-                    Competition
+                    {REPORT_LABELS.competition}
                   </p>
                   <div className="mt-3">
                     <LevelBadge level={report.competitionLevel} />
@@ -216,337 +226,105 @@ export default async function ReportPage({ params }: PageProps) {
           </section>
 
           <div className="space-y-6 px-6 py-8 sm:px-10 sm:py-10">
-            <section className="rounded-xl border border-accent/20 bg-accent/5 p-6 sm:p-8">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
-                Company-specific insight
-              </p>
-              <div className="mt-6 grid gap-4 lg:grid-cols-3">
-                <Card className="p-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-subtle">
-                    Non-obvious insight
-                  </p>
-                  <p className="mt-3 text-sm leading-7 text-muted">
-                    {report.nonObviousInsight ?? "—"}
-                  </p>
-                </Card>
-                <Card className="p-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-subtle">
-                    Strategic paradox
-                  </p>
-                  <p className="mt-3 text-sm leading-7 text-muted">
-                    {report.strategicParadox ?? "—"}
-                  </p>
-                </Card>
-                <Card className="p-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-subtle">
-                    Hidden moat / weakness
-                  </p>
-                  <p className="mt-3 text-sm leading-7 text-muted">
-                    {report.hiddenMoatOrWeakness ?? "—"}
-                  </p>
-                </Card>
+            {view.showCompanyInsightRow ? (
+              <section className="rounded-xl border border-accent/20 bg-accent/5 p-6 sm:p-8">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
+                  {REPORT_LABELS.companyInsight}
+                </p>
+                <div className="mt-6 grid gap-4 lg:grid-cols-3">
+                  <MemoCard label={REPORT_LABELS.nonObviousInsight} text={view.nonObviousInsight} />
+                  <MemoCard label={REPORT_LABELS.strategicParadox} text={view.strategicParadox} />
+                  <MemoCard
+                    label={REPORT_LABELS.hiddenMoatWeakness}
+                    text={view.hiddenMoatOrWeakness}
+                  />
+                </div>
+              </section>
+            ) : null}
+
+            {view.showThesisGrid ? (
+              <section className="rounded-xl border border-white/[0.08] bg-elevated/40 p-6 sm:p-8">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
+                  {REPORT_LABELS.investmentThesis}
+                </p>
+                <p className="mt-2 text-sm leading-7 text-muted">
+                  {REPORT_SECTION_COPY.investmentThesisIntro}
+                </p>
+                <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                  <MemoCard
+                    label={REPORT_LABELS.bullCase}
+                    text={view.bullCase}
+                    variant="bull"
+                  />
+                  <MemoCard
+                    label={REPORT_LABELS.bearCase}
+                    text={view.bearCase}
+                    variant="bear"
+                  />
+                </div>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <MemoCard label={REPORT_LABELS.moatDurability} text={view.moatDurability} />
+                  <MemoCard label={REPORT_LABELS.replacementRisk} text={view.replacementRisk} />
+                  <MemoCard label={REPORT_LABELS.gtmWeakness} text={view.gtmWeakness} />
+                  <MemoCard label={REPORT_LABELS.whyNow} text={view.whyNow} />
+                </div>
+              </section>
+            ) : null}
+
+            {view.showCoreGrid ? (
+              <div className="grid gap-6 lg:grid-cols-2">
+                {view.coreContradiction ? (
+                  <SectionCard
+                    span="half"
+                    subtitle={REPORT_SECTION_COPY.coreContradictionSubtitle}
+                    title={REPORT_LABELS.coreContradiction}
+                  >
+                    <p className="text-sm leading-7 text-muted sm:text-base">
+                      {view.coreContradiction}
+                    </p>
+                  </SectionCard>
+                ) : null}
+                {view.strategicTension ? (
+                  <SectionCard
+                    span="half"
+                    subtitle={REPORT_SECTION_COPY.strategicTensionSubtitle}
+                    title={REPORT_LABELS.strategicTension}
+                  >
+                    <p className="text-sm leading-7 text-muted sm:text-base">
+                      {view.strategicTension}
+                    </p>
+                  </SectionCard>
+                ) : null}
+                {view.hiddenRisk ? (
+                  <SectionCard
+                    span="half"
+                    subtitle={REPORT_SECTION_COPY.hiddenRiskSubtitle}
+                    title={REPORT_LABELS.hiddenRisk}
+                  >
+                    <p className="text-sm leading-7 text-muted sm:text-base">{view.hiddenRisk}</p>
+                  </SectionCard>
+                ) : null}
+                {view.whyIncumbentsHaventWon ? (
+                  <SectionCard
+                    span="half"
+                    subtitle={REPORT_SECTION_COPY.whyIncumbentsSubtitle}
+                    title={REPORT_LABELS.whyIncumbents}
+                  >
+                    <p className="text-sm leading-7 text-muted sm:text-base">
+                      {view.whyIncumbentsHaventWon}
+                    </p>
+                  </SectionCard>
+                ) : null}
               </div>
-            </section>
-
-            <div className="grid gap-6 lg:grid-cols-2">
-              <SectionCard
-                span="half"
-                subtitle="The central tension this business cannot escape."
-                title="Core Contradiction"
-              >
-                <p className="text-sm leading-7 text-muted sm:text-base">
-                  {report.coreContradiction ?? "—"}
-                </p>
-              </SectionCard>
-              <SectionCard
-                span="half"
-                subtitle="The implicit bet management is making."
-                title="Strategic Tension"
-              >
-                <p className="text-sm leading-7 text-muted sm:text-base">
-                  {report.strategicTension ?? "—"}
-                </p>
-              </SectionCard>
-              <SectionCard
-                span="half"
-                subtitle="Downside not visible in hero positioning."
-                title="Hidden Risk"
-              >
-                <p className="text-sm leading-7 text-muted sm:text-base">
-                  {report.hiddenRisk ?? "—"}
-                </p>
-              </SectionCard>
-              <SectionCard
-                span="half"
-                subtitle="Why category leaders have not already closed this wedge."
-                title="Why Incumbents Haven't Won"
-              >
-                <p className="text-sm leading-7 text-muted sm:text-base">
-                  {report.whyIncumbentsHaventWon ?? "—"}
-                </p>
-              </SectionCard>
-            </div>
-
-            {report.signalSynthesis && report.signalSynthesis.synthesisCount > 0 ? (
-              <SectionCard
-                subtitle={`${report.signalSynthesis.synthesisCount} multi-signal inferences · memo cites [SYN-*] ids first`}
-                title="Signal Synthesis"
-              >
-                {report.signalSynthesis.companyDNA ? (
-                  <div className="mb-6 rounded-lg border border-accent/30 bg-accent/5 p-5">
-                    <p className="text-xs font-medium uppercase tracking-wider text-accent">
-                      Company DNA · [{report.signalSynthesis.companyDNA.id}]
-                    </p>
-                    <p className="mt-3 text-sm leading-7 text-white">
-                      {report.signalSynthesis.companyDNA.insight}
-                    </p>
-                    <p className="mt-3 text-xs text-subtle">
-                      Confidence: {report.signalSynthesis.companyDNA.confidence} · Signals:{" "}
-                      {report.signalSynthesis.companyDNA.supportingSignals.join(", ")}
-                    </p>
-                    <p className="mt-2 text-xs text-muted">
-                      Contradiction risk: {report.signalSynthesis.companyDNA.contradictionRisk}
-                    </p>
-                  </div>
-                ) : null}
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {[
-                    { label: "Strategic patterns", items: report.signalSynthesis.strategicPatterns },
-                    { label: "Hidden tradeoffs", items: report.signalSynthesis.hiddenTradeoffs },
-                    { label: "Optimization direction", items: report.signalSynthesis.optimizationDirection },
-                    { label: "Behavior inference", items: report.signalSynthesis.behaviorInference },
-                  ].map(
-                    (group) =>
-                      group.items.length > 0 ? (
-                        <Card className="p-5" key={group.label}>
-                          <p className="text-xs font-medium uppercase tracking-wider text-subtle">
-                            {group.label}
-                          </p>
-                          <ul className="mt-4 space-y-4">
-                            {group.items.map((item) => (
-                              <li className="text-sm leading-7 text-muted" key={item.id}>
-                                <span className="font-mono text-xs text-accent">[{item.id}]</span>{" "}
-                                {item.insight}
-                                <p className="mt-2 text-xs text-subtle">
-                                  {item.confidence} · {item.supportingSignals.join(", ")}
-                                </p>
-                              </li>
-                            ))}
-                          </ul>
-                        </Card>
-                      ) : null,
-                  )}
-                </div>
-              </SectionCard>
             ) : null}
 
-            {report.marketPosition ? (
+            {view.websiteEvidence.length > 0 ? (
               <SectionCard
-                subtitle={`Memory id: ${report.memoryCompanyId ?? report.marketPosition.companyId} · cites ${report.marketPosition.synthesisIds.join(", ") || "synthesis pending"}`}
-                title="Market Position"
-              >
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Card className="p-4">
-                    <p className="text-xs uppercase tracking-wider text-subtle">Attacking</p>
-                    <p className="mt-2 text-sm leading-7 text-muted">
-                      {report.marketPosition.attacking}
-                    </p>
-                  </Card>
-                  <Card className="p-4">
-                    <p className="text-xs uppercase tracking-wider text-subtle">Replacing</p>
-                    <p className="mt-2 text-sm leading-7 text-muted">
-                      {report.marketPosition.replacing}
-                    </p>
-                  </Card>
-                  <Card className="p-4">
-                    <p className="text-xs uppercase tracking-wider text-subtle">
-                      Why incumbents haven&apos;t followed
-                    </p>
-                    <p className="mt-2 text-sm leading-7 text-muted">
-                      {report.marketPosition.whyIncumbentsHaventFollowed}
-                    </p>
-                  </Card>
-                  <Card className="p-4">
-                    <p className="text-xs uppercase tracking-wider text-subtle">Most dangerous path</p>
-                    <p className="mt-2 text-sm leading-7 text-muted">
-                      {report.marketPosition.mostDangerousPath}
-                    </p>
-                  </Card>
-                </div>
-              </SectionCard>
-            ) : null}
-
-            {report.marketNode ? (
-              <SectionCard
-                subtitle={`Market map · ${report.marketEdges?.length ?? 0} edges · cites ${report.marketNode.evidence.synthesisIds.slice(0, 2).join(", ") || "SYN"}`}
-                title="Market Map"
-              >
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <Card className="p-4">
-                    <p className="text-xs uppercase tracking-wider text-subtle">User behavior model</p>
-                    <p className="mt-2 text-sm leading-7 text-muted">
-                      {report.marketNode.userBehaviorModel}
-                    </p>
-                  </Card>
-                  <Card className="p-4">
-                    <p className="text-xs uppercase tracking-wider text-subtle">Distribution channel</p>
-                    <p className="mt-2 text-sm leading-7 text-muted">
-                      {report.marketNode.distributionChannel}
-                    </p>
-                  </Card>
-                  <Card className="p-4">
-                    <p className="text-xs uppercase tracking-wider text-subtle">Infrastructure dependency</p>
-                    <p className="mt-2 text-sm leading-7 text-muted">
-                      {report.marketNode.infrastructureDependency}
-                    </p>
-                  </Card>
-                  <Card className="p-4">
-                    <p className="text-xs uppercase tracking-wider text-subtle">Depends on</p>
-                    <p className="mt-2 text-sm leading-7 text-muted">
-                      {report.marketNode.dependsOn.length
-                        ? report.marketNode.dependsOn.join(" · ")
-                        : "—"}
-                    </p>
-                  </Card>
-                </div>
-                {report.attackVector ? (
-                  <div className="mt-6 rounded-lg border border-white/[0.06] bg-canvas/40 p-4">
-                    <p className="text-xs uppercase tracking-wider text-subtle">Attack vector</p>
-                    <p className="mt-2 text-sm text-muted">
-                      {report.attackVector.target}: {report.attackVector.attackSurface}
-                    </p>
-                    <p className="mt-2 text-xs text-subtle">
-                      Friction: {report.attackVector.adoptionFriction} · Difficulty:{" "}
-                      {report.attackVector.replacementDifficulty}
-                    </p>
-                  </div>
-                ) : null}
-                {report.fragileMoats && report.fragileMoats.length > 0 ? (
-                  <ul className="mt-6 space-y-3">
-                    {report.fragileMoats.map((moat) => (
-                      <li
-                        className="rounded-lg border border-warn/20 bg-warn/5 px-4 py-3 text-sm text-muted"
-                        key={`${moat.moatType}-${moat.companyId}`}
-                      >
-                        <span className="font-medium text-warn capitalize">{moat.moatType}</span>{" "}
-                        (fragility {moat.fragilityScore}) — {moat.vulnerability}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {report.marketEvolution ? (
-                  <div className="mt-6 border-t border-white/[0.06] pt-6">
-                    <p className="text-xs font-medium uppercase tracking-wider text-accent">
-                      Market evolution ({report.marketEvolution.horizon}) ·{" "}
-                      {report.marketEvolution.overallConfidence} confidence
-                    </p>
-                    {report.marketEvolution.collapsingLayers[0] ? (
-                      <p className="mt-3 text-sm leading-7 text-muted">
-                        {report.marketEvolution.collapsingLayers[0].insight}
-                      </p>
-                    ) : null}
-                    {report.marketEvolution.agentReplaceableLayers[0] ? (
-                      <p className="mt-2 text-sm leading-7 text-muted">
-                        {report.marketEvolution.agentReplaceableLayers[0].insight}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </SectionCard>
-            ) : null}
-
-            {report.strategicSimulation ? (
-              <SectionCard
-                subtitle={`${report.strategicSimulation.primaryScenarios.length} scenarios · power transitions · future fragility`}
-                title="Strategic Simulation"
-              >
-                {report.strategicSimulation.primaryScenarios[0] ? (
-                  <div className="rounded-lg border border-white/[0.06] bg-canvas/40 p-4">
-                    <p className="text-xs uppercase tracking-wider text-accent">
-                      {report.strategicSimulation.primaryScenarios[0].scenarioLabel} ·{" "}
-                      {report.strategicSimulation.primaryScenarios[0].confidence} confidence
-                    </p>
-                    {report.strategicSimulation.primaryScenarios[0].winners[0] ? (
-                      <p className="mt-2 text-sm text-muted">
-                        Winner: {report.strategicSimulation.primaryScenarios[0].winners[0].reason}
-                      </p>
-                    ) : null}
-                    {report.strategicSimulation.primaryScenarios[0].losers[0] ? (
-                      <p className="mt-2 text-sm text-muted">
-                        Loser: {report.strategicSimulation.primaryScenarios[0].losers[0].reason}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
-                {report.strategicSimulation.companyResponses[0] ? (
-                  <Card className="mt-4 p-4">
-                    <p className="text-xs uppercase tracking-wider text-subtle">Company response</p>
-                    <p className="mt-2 text-sm leading-7 text-muted">
-                      {report.strategicSimulation.companyResponses[0].likelyResponse}
-                    </p>
-                    <p className="mt-2 text-xs text-subtle">
-                      Survival: {report.strategicSimulation.companyResponses[0].survivalProbability} ·{" "}
-                      {report.strategicSimulation.companyResponses[0].defensiveAdvantage.slice(0, 120)}
-                    </p>
-                  </Card>
-                ) : null}
-                {report.strategicSimulation.futureFragility[0] ? (
-                  <p className="mt-4 text-sm leading-7 text-muted">
-                    <span className="text-warn">Future fragility:</span>{" "}
-                    {report.strategicSimulation.futureFragility[0].futureRisk}
-                  </p>
-                ) : null}
-                {report.strategicSimulation.powerTransitions[0] ? (
-                  <p className="mt-3 text-sm leading-7 text-muted">
-                    <span className="text-accent">Power shift:</span>{" "}
-                    {report.strategicSimulation.powerTransitions[0].from} →{" "}
-                    {report.strategicSimulation.powerTransitions[0].to} —{" "}
-                    {report.strategicSimulation.powerTransitions[0].insight.slice(0, 160)}
-                  </p>
-                ) : null}
-              </SectionCard>
-            ) : null}
-
-            {report.extractedSignals && report.extractedSignals.signalCount > 0 ? (
-              <SectionCard
-                subtitle={`Tier ${report.extractedSignals.evidenceTier} · ${report.extractedSignals.signalCount} signals · priority: pricing → workflow → onboarding → docs → community`}
-                title="Structured Evidence"
-              >
-                {report.extractedSignals.gaps.length > 0 ? (
-                  <p className="mb-4 text-xs text-subtle">
-                    Gaps: {report.extractedSignals.gaps.join(" · ")}
-                  </p>
-                ) : null}
-                <ul className="space-y-2 font-mono text-xs text-muted">
-                  {[
-                    ...report.extractedSignals.pricingModel,
-                    ...report.extractedSignals.workflow,
-                    ...report.extractedSignals.onboardingCta,
-                    ...report.extractedSignals.docsSignals,
-                    ...report.extractedSignals.communitySignals,
-                    ...report.extractedSignals.positioning,
-                    ...report.extractedSignals.integrations,
-                    ...report.extractedSignals.aiClaims,
-                  ].map((signal) => (
-                    <li
-                      className="rounded border border-white/[0.06] bg-canvas/40 px-3 py-2"
-                      key={signal.id}
-                    >
-                      <span className="text-accent">[{signal.id}]</span>{" "}
-                      <span className="text-subtle">({signal.category})</span> {signal.text}
-                    </li>
-                  ))}
-                </ul>
-              </SectionCard>
-            ) : null}
-
-            {websiteEvidence.length > 0 ? (
-              <SectionCard
-                subtitle="Facts pulled from the scraped page — cited in the memo below."
-                title="Website Evidence"
+                subtitle={REPORT_SECTION_COPY.evidenceSubtitle}
+                title={REPORT_LABELS.evidenceSummary}
               >
                 <ul className="space-y-3">
-                  {websiteEvidence.map((item) => (
+                  {view.websiteEvidence.map((item) => (
                     <li
                       className="rounded-lg border border-white/[0.06] bg-canvas/60 px-4 py-3 text-sm leading-7 text-muted sm:text-base"
                       key={item}
@@ -558,146 +336,151 @@ export default async function ReportPage({ params }: PageProps) {
               </SectionCard>
             ) : null}
 
-            <div className="grid gap-6 lg:grid-cols-2">
+            {view.whatThisCompanyActuallyIs || view.moatAnalysis ? (
+              <div className="grid gap-6 lg:grid-cols-2">
+                {view.whatThisCompanyActuallyIs ? (
+                  <SectionCard
+                    span="half"
+                    subtitle={REPORT_SECTION_COPY.whatCompanyIsSubtitle}
+                    title={REPORT_LABELS.whatCompanyIs}
+                  >
+                    <p className="text-sm leading-7 text-muted sm:text-base">
+                      {view.whatThisCompanyActuallyIs}
+                    </p>
+                  </SectionCard>
+                ) : null}
+                {view.moatAnalysis ? (
+                  <SectionCard
+                    span="half"
+                    subtitle={REPORT_SECTION_COPY.moatAnalysisSubtitle}
+                    title={REPORT_LABELS.moatAnalysis}
+                  >
+                    <p className="text-sm leading-7 text-muted sm:text-base">{view.moatAnalysis}</p>
+                  </SectionCard>
+                ) : null}
+              </div>
+            ) : null}
+
+            {view.marketAnalysis ? (
               <SectionCard
-                span="half"
-                subtitle="Plain-language read of the business — not the pitch deck version."
-                title="What This Company Actually Is"
+                subtitle={REPORT_SECTION_COPY.marketAnalysisSubtitle}
+                title={REPORT_LABELS.marketAnalysis}
               >
-                <p className="text-sm leading-7 text-muted sm:text-base">
-                  {memoParagraph(
-                    report.whatThisCompanyActuallyIs,
-                    report.suggestedMvp,
-                  )}
+                <p className="max-w-3xl text-sm leading-7 text-muted sm:text-base">
+                  {view.marketAnalysis}
                 </p>
               </SectionCard>
+            ) : null}
 
+            {view.competitionAnalysis ? (
               <SectionCard
-                span="half"
-                subtitle="What, if anything, compounds over time."
-                title="Moat Analysis"
+                subtitle={REPORT_SECTION_COPY.competitionAnalysisSubtitle}
+                title={REPORT_LABELS.competitionAnalysis}
               >
-                <p className="text-sm leading-7 text-muted sm:text-base">
-                  {memoParagraph(
-                    report.moatAnalysis,
-                    "Moat not evidenced from available materials.",
-                  )}
+                <p className="max-w-3xl text-sm leading-7 text-muted sm:text-base">
+                  {view.competitionAnalysis}
                 </p>
               </SectionCard>
-            </div>
+            ) : null}
 
-            <SectionCard
-              subtitle="Market pull and category dynamics."
-              title="Market Analysis"
-            >
-              <p className="max-w-3xl text-sm leading-7 text-muted sm:text-base">
-                {report.marketAnalysis}
-              </p>
-            </SectionCard>
+            {view.opportunities.length > 0 ? (
+              <SectionCard
+                subtitle={REPORT_SECTION_COPY.opportunitiesSubtitle}
+                title={REPORT_LABELS.opportunities}
+              >
+                <ul className="grid gap-3 sm:grid-cols-2">
+                  {view.opportunities.map((item) => (
+                    <li
+                      className="rounded-lg border border-white/[0.06] bg-canvas/40 p-4 text-sm leading-7 text-muted"
+                      key={item}
+                    >
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </SectionCard>
+            ) : null}
 
-            <SectionCard
-              subtitle="Substitutes, incumbents, and positioning pressure."
-              title="Competition Analysis"
-            >
-              <p className="max-w-3xl text-sm leading-7 text-muted sm:text-base">
-                {competitionAnalysis}
-              </p>
-            </SectionCard>
+            {view.whyFail.length > 0 ? (
+              <SectionCard
+                subtitle={REPORT_SECTION_COPY.whyFailSubtitle}
+                title={REPORT_LABELS.whyFail}
+              >
+                <ul className="space-y-3">
+                  {view.whyFail.map((item, index) => (
+                    <li
+                      className="flex gap-4 rounded-lg border border-white/[0.06] bg-canvas/40 p-4 sm:p-5"
+                      key={item}
+                    >
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] font-mono text-xs font-semibold text-subtle">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <p className="text-sm leading-7 text-muted sm:text-base">{item}</p>
+                    </li>
+                  ))}
+                </ul>
+              </SectionCard>
+            ) : null}
 
-            <SectionCard
-              subtitle="Evidence-based wedges — not a founder to-do list."
-              title="Opportunities"
-            >
-              <ul className="grid gap-3 sm:grid-cols-2">
-                {report.opportunities.map((item) => (
-                  <li
-                    className="rounded-lg border border-white/[0.06] bg-canvas/40 p-4 text-sm leading-7 text-muted"
-                    key={item}
-                  >
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </SectionCard>
-
-            <SectionCard
-              subtitle="Downside cases the partnership would underwrite against."
-              title="Why This Might Fail"
-            >
-              <ul className="space-y-3">
-                {whyFail.map((item, index) => (
-                  <li
-                    className="flex gap-4 rounded-lg border border-white/[0.06] bg-canvas/40 p-4 sm:p-5"
-                    key={item}
-                  >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] font-mono text-xs font-semibold text-subtle">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <p className="text-sm leading-7 text-muted sm:text-base">{item}</p>
-                  </li>
-                ))}
-              </ul>
-            </SectionCard>
-
-            <SectionCard
-              subtitle="Diligence questions for the next partner meeting."
-              title="Founder Questions"
-            >
-              <ul className="space-y-3">
-                {founderQuestions.map((item) => (
-                  <li
-                    className="border-l-2 border-accent/60 pl-4 text-sm leading-7 text-muted sm:text-base"
-                    key={item}
-                  >
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </SectionCard>
+            {view.founderQuestions.length > 0 ? (
+              <SectionCard
+                subtitle={REPORT_SECTION_COPY.founderQuestionsSubtitle}
+                title={REPORT_LABELS.founderQuestions}
+              >
+                <ul className="space-y-3">
+                  {view.founderQuestions.map((item) => (
+                    <li
+                      className="border-l-2 border-accent/60 pl-4 text-sm leading-7 text-muted sm:text-base"
+                      key={item}
+                    >
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </SectionCard>
+            ) : null}
           </div>
 
-          <section className="relative overflow-hidden border-t border-white/[0.06] bg-gradient-to-br from-accent/20 via-canvas to-canvas px-6 py-12 sm:px-10 sm:py-16 print-surface">
-            <div className="pointer-events-none absolute inset-0 bg-hero-glow opacity-40" />
-            <div className="relative">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">
-                Investment Verdict
-              </p>
-              <div className="mt-6 flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
-                <div className="max-w-3xl">
-                  <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-                    {verdictHeadline}
-                  </h2>
-                  <p className="mt-5 text-sm leading-8 text-muted sm:text-base">
-                    {memoParagraph(
-                      report.investmentVerdict,
-                      `Score ${report.validationScore}/100. ${opportunityVerdict}.`,
-                    )}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-3 lg:flex-col lg:items-end">
-                  <div className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm">
-                    <span className="text-subtle">Confidence </span>
-                    <span className="font-semibold text-white">{confidence}</span>
+          {view.investmentVerdict ? (
+            <section className="relative overflow-hidden border-t border-white/[0.06] bg-gradient-to-br from-accent/20 via-canvas to-canvas px-6 py-12 sm:px-10 sm:py-16 print-surface">
+              <div className="pointer-events-none absolute inset-0 bg-hero-glow opacity-40" />
+              <div className="relative">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">
+                  {REPORT_LABELS.investmentVerdict}
+                </p>
+                <div className="mt-6 flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="max-w-3xl">
+                    <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                      {verdictTitle}
+                    </h2>
+                    <p className="mt-5 text-sm leading-8 text-muted sm:text-base">
+                      {view.investmentVerdict}
+                    </p>
                   </div>
-                  <div className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm tabular-nums">
-                    <span className="text-subtle">Score </span>
-                    <span className="font-semibold text-white">
-                      {report.validationScore}/100
-                    </span>
-                  </div>
-                  <div className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm">
-                    <span className="text-subtle">Verdict </span>
-                    <span className="font-semibold text-white">{report.verdict}</span>
+                  <div className="flex flex-wrap gap-3 lg:flex-col lg:items-end">
+                    <div className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm">
+                      <span className="text-subtle">{REPORT_LABELS.confidence} </span>
+                      <span className="font-semibold text-white">{confidence}</span>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm tabular-nums">
+                      <span className="text-subtle">{REPORT_LABELS.score} </span>
+                      <span className="font-semibold text-white">
+                        {report.validationScore}/100
+                      </span>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm">
+                      <span className="text-subtle">{REPORT_LABELS.verdict} </span>
+                      <span className="font-semibold text-white">{report.verdict}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
+          ) : null}
 
           <footer className="border-t border-white/[0.06] bg-elevated/50 px-6 py-6 sm:px-10">
             <p className="text-xs leading-5 text-subtle">
-              {reportNumber} · {formatDate(report.createdAt)} · Shareable partner memo ·
-              SignalProof
+              {reportNumber} · {formatDate(report.createdAt)} · {REPORT_LABELS.footer}
             </p>
           </footer>
         </article>

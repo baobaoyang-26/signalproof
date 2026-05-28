@@ -1,107 +1,90 @@
 import { Card } from "@/components/ui/card";
 import { SiteHeader } from "@/components/ui/site-header";
+import { OrderForm } from "@/components/order/order-form";
 import {
-  CHECKOUT_BUTTON_LABEL,
-  LEMONSQUEEZY_CHECKOUT_URL,
+  CHECKOUT_COMING_SOON_MESSAGE,
+  CHECKOUT_NOT_CONFIGURED_MESSAGE,
+  CHECKOUT_PLAN_META,
+  isSellablePlan,
+  parseCheckoutPlan,
 } from "@/lib/checkout";
-import { submitOrderForm } from "./actions";
+import { ORDER_PAGE, PRICING } from "@/lib/site-copy";
 
-const inputClass =
-  "w-full rounded-lg border border-white/10 bg-canvas/80 px-4 py-3 text-base text-white outline-none transition placeholder:text-subtle focus:border-accent/50 focus:ring-1 focus:ring-accent/30";
+type PageProps = {
+  searchParams: Promise<{ plan?: string; status?: string }>;
+};
 
-export default function OrderPage() {
+export default async function OrderPage({ searchParams }: PageProps) {
+  const { plan: planParam, status } = await searchParams;
+  const requestedPlan = parseCheckoutPlan(planParam);
+  const sellable = isSellablePlan(requestedPlan);
+  const plan = "single_memo" as const;
+  const planMeta = CHECKOUT_PLAN_META[plan];
+
+  const statusMessage =
+    status === "checkout_unavailable"
+      ? CHECKOUT_NOT_CONFIGURED_MESSAGE
+      : status === "coming_soon"
+        ? CHECKOUT_COMING_SOON_MESSAGE
+        : null;
+
   return (
-    <div className="min-h-screen bg-canvas bg-grid">
+    <div className="notranslate min-h-screen bg-canvas bg-grid" lang="en" translate="no">
       <div className="pointer-events-none fixed inset-0 bg-hero-glow opacity-40" />
-      <SiteHeader cta={{ href: "/", label: "Back" }} variant="app" />
+      <SiteHeader cta={{ href: "/", label: "Home" }} variant="app" />
 
-      <section className="relative mx-auto grid w-full max-w-6xl gap-10 px-5 py-12 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:py-20">
-        <div className="flex flex-col">
+      <section className="relative mx-auto grid w-full max-w-6xl gap-12 px-5 py-14 sm:px-8 lg:grid-cols-[0.95fr_1.05fr] lg:py-20">
+        <div className="flex flex-col lg:pt-2">
           <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent">
-            Validation report
+            {ORDER_PAGE.eyebrow}
           </p>
-          <h1 className="mt-4 text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-            Submit your profile
-          </h1>
-          <p className="mt-5 max-w-md text-base leading-7 text-muted">
-            We scrape your website, run partner-level analysis, and deliver a
-            shareable VC memo within 24 hours.
-          </p>
-          <a
-            className="mt-8 inline-flex w-full items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-6 py-3.5 text-sm font-medium text-white transition hover:border-white/20 sm:w-auto"
-            href={LEMONSQUEEZY_CHECKOUT_URL}
-          >
-            {CHECKOUT_BUTTON_LABEL} only
-          </a>
-          <p className="mt-4 text-sm text-subtle">
-            Or complete the form below — checkout follows submission.
-          </p>
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <h1 className="text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
+              {ORDER_PAGE.title}
+            </h1>
+            {sellable ? (
+              <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
+                {planMeta.name} · {planMeta.displayPrice}
+              </span>
+            ) : (
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-subtle">
+                Coming Soon
+              </span>
+            )}
+          </div>
+          <p className="mt-6 max-w-md text-base leading-8 text-muted">{ORDER_PAGE.subtitle}</p>
+          {sellable ? (
+            <div className="mt-8 space-y-3 text-sm leading-7 text-subtle">
+              <p>{ORDER_PAGE.formHint}</p>
+              <p className="text-xs text-subtle">{planMeta.billingNote}</p>
+              <p>{PRICING.checkoutPaymentNotice}</p>
+            </div>
+          ) : null}
+          {statusMessage ? (
+            <p
+              className="mt-6 rounded-lg border border-warn/30 bg-warn/10 px-4 py-3 text-sm leading-7 text-warn"
+              role="alert"
+            >
+              {statusMessage}
+            </p>
+          ) : null}
         </div>
 
-        <Card className="p-6 sm:p-8" glow>
-          <form action={submitOrderForm}>
-            <div className="grid gap-5">
-              <label className="grid gap-2">
-                <span className="text-sm font-medium text-muted">Email</span>
-                <input
-                  className={inputClass}
-                  name="email"
-                  placeholder="founder@company.com"
-                  required
-                  type="email"
-                />
-              </label>
-
-              <label className="grid gap-2">
-                <span className="text-sm font-medium text-muted">Social profile URL</span>
-                <input
-                  className={inputClass}
-                  name="socialProfileUrl"
-                  placeholder="https://yoursite.com or LinkedIn"
-                  required
-                  type="url"
-                />
-              </label>
-
-              <label className="grid gap-2">
-                <span className="text-sm font-medium text-muted">Industry / niche</span>
-                <input
-                  className={inputClass}
-                  name="industryNiche"
-                  placeholder="B2B SaaS, creator economy, ecommerce"
-                  required
-                  type="text"
-                />
-              </label>
-
-              <label className="grid gap-2">
-                <span className="text-sm font-medium text-muted">Main concern</span>
-                <input
-                  className={inputClass}
-                  name="mainConcern"
-                  placeholder="What should this report help you validate?"
-                  required
-                  type="text"
-                />
-              </label>
-
-              <label className="grid gap-2">
-                <span className="text-sm font-medium text-muted">Additional notes</span>
-                <textarea
-                  className={`${inputClass} min-h-28 resize-y`}
-                  name="additionalNotes"
-                  placeholder="Optional context, competitors, or goals"
-                />
-              </label>
+        <Card className="p-7 sm:p-9" glow>
+          {!sellable ? (
+            <div className="py-8 text-center">
+              <p className="text-sm font-medium text-subtle">Coming Soon</p>
+              <p className="mt-4 text-base leading-7 text-muted">{CHECKOUT_COMING_SOON_MESSAGE}</p>
+              <a
+                className="mt-8 inline-flex rounded-lg bg-white px-6 py-3 text-sm font-semibold text-canvas hover:bg-white/90"
+                href="/order"
+              >
+                {ORDER_PAGE.orderSingleMemoCta}
+              </a>
             </div>
-
-            <button
-              className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-white px-6 py-3.5 text-sm font-semibold text-canvas transition hover:bg-white/90"
-              type="submit"
-            >
-              {CHECKOUT_BUTTON_LABEL}
-            </button>
-          </form>
+          ) : (
+            <OrderForm />
+          )}
         </Card>
       </section>
     </div>

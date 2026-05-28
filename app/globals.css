@@ -61,19 +61,110 @@ a {
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+
+  .report-prose {
+    color: #e4e4e7;
+    line-height: 1.75;
+  }
 }
 
 @media print {
-  body {
-    background: #fff;
-    color: #111;
+  @page {
+    margin: 12mm 14mm;
+    size: A4;
   }
+
+  body {
+    background: #fff !important;
+    color: #111827 !important;
+    font-size: 11pt;
+  }
+
   .no-print {
     display: none !important;
   }
-  .print-surface {
+
+  .report-document,
+  .report-document * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .report-document {
     background: #fff !important;
-    border-color: #e5e5e5 !important;
-    color: #111 !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #111827 !important;
+  }
+
+  .report-document h1,
+  .report-document h2 {
+    color: #111827 !important;
+  }
+
+  .report-document .text-white,
+  .report-document .report-prose,
+  .report-document p,
+  .report-document li,
+  .report-document dd {
+    color: #1f2937 !important;
+  }
+
+  .report-document .text-muted,
+  .report-document .report-prose {
+    color: #374151 !important;
+  }
+
+  .report-document .text-subtle,
+  .report-document dt,
+  .report-document .text-xs.uppercase {
+    color: #4b5563 !important;
+  }
+
+  .report-document .text-accent {
+    color: #1d4ed8 !important;
+  }
+
+  .report-document .bg-surface\/80,
+  .report-document .bg-elevated\/80,
+  .report-document .bg-elevated\/40,
+  .report-document .bg-canvas\/40,
+  .report-document .bg-canvas\/60,
+  .report-document .bg-accent\/5,
+  .report-document .bg-success\/5,
+  .report-document .bg-danger\/5,
+  .report-document [class*="bg-surface"],
+  .report-document [class*="bg-elevated"],
+  .report-document [class*="bg-canvas"] {
+    background: #fff !important;
+    border-color: #e5e7eb !important;
+  }
+
+  .print-surface {
+    background: #f9fafb !important;
+    border-color: #e5e7eb !important;
+    color: #111827 !important;
+  }
+
+  .report-document section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .report-document .rounded-xl,
+  .report-document .rounded-lg {
+    border: 1px solid #e5e7eb !important;
+    margin-bottom: 8px !important;
+    padding: 12px !important;
+  }
+
+  .report-document .shadow-card,
+  .report-document .glow {
+    box-shadow: none !important;
+  }
+
+  .report-document a {
+    color: #1d4ed8 !important;
+    text-decoration: underline;
   }
 }

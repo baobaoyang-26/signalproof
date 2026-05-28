@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { deriveCompanyIdFromUrl } from "@/lib/company-name";
 import { allSignals, type ExtractedSignal, type ExtractedSignals } from "@/lib/extract-signals";
 import type { ValidationReport } from "@/lib/reports";
 import {
@@ -162,13 +163,8 @@ function slugify(value: string): string {
 
 export function deriveCompanyId(report: ValidationReport): string {
   const url = report.scrapedUrl ?? report.socialProfileUrl;
-  try {
-    const host = new URL(url.startsWith("http") ? url : `https://${url}`).hostname;
-    const slug = host.replace(/^www\./, "").split(".")[0];
-    if (slug.length > 2) return slug;
-  } catch {
-    /* ignore */
-  }
+  const fromUrl = deriveCompanyIdFromUrl(url);
+  if (fromUrl !== "unknown") return fromUrl;
   return slugify(report.companyName ?? report.industryNiche) || report.id.slice(0, 8);
 }
 

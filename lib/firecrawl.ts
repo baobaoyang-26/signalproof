@@ -1,14 +1,25 @@
 const FIRECRAWL_API_URL = "https://api.firecrawl.dev/v1/scrape";
-const MAX_MARKDOWN_CHARS = 32_000;
+const MAX_MARKDOWN_CHARS = 48_000;
 const MIN_PAGE_CHARS = 80;
 
-const SUB_PATHS = [
-  "/pricing",
-  "/docs",
-  "/about",
-  "/product",
-  "/enterprise",
-  "/community",
+/** Lower number = merged first when truncating. */
+const SCRAPE_PATHS: { path: string; priority: number }[] = [
+  { path: "/", priority: 0 },
+  { path: "/pricing", priority: 1 },
+  { path: "/integrations", priority: 2 },
+  { path: "/api", priority: 3 },
+  { path: "/developers", priority: 4 },
+  { path: "/developer", priority: 5 },
+  { path: "/docs", priority: 6 },
+  { path: "/changelog", priority: 7 },
+  { path: "/careers", priority: 8 },
+  { path: "/jobs", priority: 9 },
+  { path: "/roadmap", priority: 10 },
+  { path: "/blog", priority: 11 },
+  { path: "/about", priority: 12 },
+  { path: "/product", priority: 13 },
+  { path: "/enterprise", priority: 14 },
+  { path: "/community", priority: 15 },
 ];
 
 export type FirecrawlScrapeResult = {
@@ -50,6 +61,53 @@ export function normalizeWebsiteUrl(url: string): string {
   return `https://${trimmed}`;
 }
 
+function pathPriority(pageUrl: string, origin: string, homepageUrl: string): number {
+  try {
+    const parsed = new URL(pageUrl);
+    const home = new URL(homepageUrl);
+    if (parsed.origin === home.origin && parsed.pathname.replace(/\/$/, "") === home.pathname.replace(/\/$/, "")) {
+      return 0;
+    }
+    const pathname = parsed.pathname.replace(/\/$/, "") || "/";
+    let best = 99;
+    for (const entry of SCRAPE_PATHS) {
+      if (entry.path === "/") continue;
+      if (pathname === entry.path || pathname.startsWith(`${entry.path}/`)) {
+        best = Math.min(best, entry.priority);
+      }
+    }
+    return best;
+  } catch {
+    return 99;
+  }
+}
+
+function mergePages(
+  pages: Omit<FirecrawlScrapeResult, "pagesScraped">[],
+  origin: string,
+  homepageUrl: string,
+): string {
+  const sorted = [...pages].sort(
+    (a, b) => pathPriority(a.url, origin, homepageUrl) - pathPriority(b.url, origin, homepageUrl),
+  );
+
+  const chunks: string[] = [];
+  let total = 0;
+  for (const page of sorted) {
+    const block = `## Source: ${page.url}\n\n${page.markdown}`;
+    if (total + block.length > MAX_MARKDOWN_CHARS) {
+      const remaining = MAX_MARKDOWN_CHARS - total;
+      if (remaining > 500) {
+        chunks.push(`${block.slice(0, remaining)}\n\n[Section truncated…]`);
+      }
+      break;
+    }
+    chunks.push(block);
+    total += block.length + 4;
+  }
+  return chunks.join("\n\n---\n\n");
+}
+
 function truncateMarkdown(markdown: string): string {
   if (markdown.length <= MAX_MARKDOWN_CHARS) {
     return markdown;
@@ -62,7 +120,8 @@ function buildScrapeUrls(profileUrl: string): string[] {
   const origin = new URL(normalized).origin;
   const urls = new Set<string>([normalized]);
 
-  for (const path of SUB_PATHS) {
+  for (const { path } of SCRAPE_PATHS) {
+    if (path === "/") continue;
     urls.add(`${origin}${path}`);
   }
 
@@ -115,7 +174,7 @@ async function scrapeWebsiteRaw(
   };
 }
 
-/** Scrape homepage + key subpaths; merge 2–5 pages when available. */
+/** Scrape homepage + high-value subpaths; merge by priority (pricing, API, careers, etc.). */
 export async function scrapeProfileUrl(
   profileUrl: string,
 ): Promise<FirecrawlScrapeResult | null> {
@@ -128,6 +187,8 @@ export async function scrapeProfileUrl(
     return null;
   }
 
+  const homepageUrl = normalizeWebsiteUrl(profileUrl);
+  const origin = new URL(homepageUrl).origin;
   const urls = buildScrapeUrls(profileUrl);
   const settled = await Promise.allSettled(urls.map((url) => scrapeWebsiteRaw(url)));
 
@@ -143,10 +204,8 @@ export async function scrapeProfileUrl(
     return null;
   }
 
-  const primary = pages.find((p) => p.url === normalizeWebsiteUrl(profileUrl)) ?? pages[0];
-  const merged = pages
-    .map((page) => `## Source: ${page.url}\n\n${page.markdown}`)
-    .join("\n\n---\n\n");
+  const primary = pages.find((p) => p.url === homepageUrl) ?? pages[0];
+  const merged = mergePages(pages, origin, homepageUrl);
 
   console.info(
     `[SignalProof] Firecrawl merged ${pages.length} page(s) for ${profileUrl}`,

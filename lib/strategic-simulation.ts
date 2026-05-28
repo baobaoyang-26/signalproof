@@ -346,6 +346,8 @@ function emptySignals(): CompanyMemoryRecord["extractedSignals"] {
     positioning: [],
     repeatedLanguage: [],
     integrations: [],
+    apiSignals: [],
+    hiringSignals: [],
     socialProof: [],
     aiClaims: [],
     enterpriseSignals: [],
